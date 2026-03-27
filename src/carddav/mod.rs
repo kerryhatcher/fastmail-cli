@@ -585,4 +585,418 @@ END:VCARD</card:address-data>
         );
         assert_eq!(contacts[0].etag, Some("\"etag-value-123\"".to_string()));
     }
+
+    // ===== RED tests for escape_value =====
+
+    #[test]
+    fn test_escape_value_backslash() {
+        assert_eq!(escape_value("a\\b"), "a\\\\b");
+    }
+
+    #[test]
+    fn test_escape_value_semicolon() {
+        assert_eq!(escape_value("a;b"), "a\\;b");
+    }
+
+    #[test]
+    fn test_escape_value_comma() {
+        assert_eq!(escape_value("a,b"), "a\\,b");
+    }
+
+    #[test]
+    fn test_escape_value_newline() {
+        assert_eq!(escape_value("line1\nline2"), "line1\\nline2");
+    }
+
+    #[test]
+    fn test_escape_value_combined() {
+        assert_eq!(escape_value("a\\;b,c\nd"), "a\\\\\\;b\\,c\\nd");
+    }
+
+    #[test]
+    fn test_escape_value_no_special() {
+        assert_eq!(escape_value("hello world"), "hello world");
+    }
+
+    // ===== RED tests for fold_line =====
+
+    #[test]
+    fn test_fold_line_short() {
+        assert_eq!(fold_line("FN:Alice"), "FN:Alice\r\n");
+    }
+
+    #[test]
+    fn test_fold_line_exactly_75() {
+        let line = "X".repeat(75);
+        let result = fold_line(&line);
+        assert!(result.ends_with("\r\n"));
+        // No folding: result should be just the 75 chars + CRLF, no continuation
+        assert!(!result.contains("\r\n "));
+    }
+
+    #[test]
+    fn test_fold_line_76_bytes() {
+        let line = "X".repeat(76);
+        let result = fold_line(&line);
+        // Should fold into 2 physical lines with CRLF + space
+        assert!(result.contains("\r\n "));
+        // First line: 75 bytes, continuation: 1 byte + CRLF
+        let lines: Vec<&str> = result.split("\r\n").collect();
+        assert!(lines.len() >= 2);
+        assert_eq!(lines[0].len(), 75);
+    }
+
+    #[test]
+    fn test_fold_line_long() {
+        let line = "X".repeat(200);
+        let result = fold_line(&line);
+        // Must end with CRLF
+        assert!(result.ends_with("\r\n"));
+        // Reconstruct: strip CRLF from each line, strip leading space from continuations
+        let mut unfolded = String::new();
+        for (i, physical) in result.split("\r\n").filter(|s: &&str| !s.is_empty()).enumerate() {
+            if i == 0 {
+                unfolded.push_str(physical);
+            } else {
+                // Leading space is fold indicator, skip it
+                unfolded.push_str(&physical[1..]);
+            }
+        }
+        assert_eq!(unfolded, line);
+    }
+
+    #[test]
+    fn test_fold_line_utf8_boundary() {
+        // "é" is 2 bytes in UTF-8; place it near the 75-byte boundary
+        // Build a line where a multi-byte char straddles position 75
+        let prefix = "A".repeat(74); // 74 bytes
+        let suffix = "é"; // 2 bytes, total = 76 bytes
+        let line = format!("{}{}", prefix, suffix);
+        let result = fold_line(&line);
+        // Result must be valid UTF-8
+        assert!(std::str::from_utf8(result.as_bytes()).is_ok());
+        // Must end with CRLF
+        assert!(result.ends_with("\r\n"));
+    }
+
+    // ===== RED tests for serialize_vcard =====
+
+    fn make_basic_contact() -> Contact {
+        Contact {
+            id: "test-uid-001".to_string(),
+            name: "Alice Smith".to_string(),
+            emails: vec![ContactEmail {
+                email: "alice@example.com".to_string(),
+                label: None,
+            }],
+            phones: vec![],
+            organization: None,
+            title: None,
+            notes: None,
+            address: None,
+            href: None,
+            etag: None,
+        }
+    }
+
+    #[test]
+    fn test_serialize_vcard_basic() {
+        let contact = make_basic_contact();
+        let output = serialize_vcard(&contact);
+        assert!(output.contains("BEGIN:VCARD"));
+        assert!(output.contains("VERSION:3.0"));
+        assert!(output.contains("FN:Alice Smith"));
+        assert!(output.contains("N:Smith;Alice;;;"));
+        assert!(output.contains("EMAIL:alice@example.com"));
+        assert!(output.contains("END:VCARD"));
+    }
+
+    #[test]
+    fn test_serialize_vcard_full_contact() {
+        let contact = Contact {
+            id: "uid-full".to_string(),
+            name: "John Q Smith".to_string(),
+            emails: vec![
+                ContactEmail {
+                    email: "john@work.com".to_string(),
+                    label: Some("work".to_string()),
+                },
+                ContactEmail {
+                    email: "john@home.com".to_string(),
+                    label: None,
+                },
+            ],
+            phones: vec![ContactPhone {
+                number: "+15551234567".to_string(),
+                label: Some("cell".to_string()),
+            }],
+            organization: Some("Acme Corp".to_string()),
+            title: Some("Engineer".to_string()),
+            notes: Some("Test notes".to_string()),
+            address: Some("456 Oak Ave".to_string()),
+            href: None,
+            etag: None,
+        };
+        let output = serialize_vcard(&contact);
+        assert!(output.contains("FN:John Q Smith"));
+        assert!(output.contains("N:Smith;John;Q;;"));
+        assert!(output.contains("EMAIL;TYPE=work:john@work.com"));
+        assert!(output.contains("EMAIL:john@home.com"));
+        assert!(output.contains("TEL;TYPE=cell:+15551234567"));
+        assert!(output.contains("ORG:Acme Corp"));
+        assert!(output.contains("TITLE:Engineer"));
+        assert!(output.contains("ADR:;;456 Oak Ave;;;;;"));
+        assert!(output.contains("NOTE:Test notes"));
+    }
+
+    #[test]
+    fn test_serialize_vcard_single_name() {
+        let contact = Contact {
+            id: "uid-single".to_string(),
+            name: "Alice".to_string(),
+            emails: vec![],
+            phones: vec![],
+            organization: None,
+            title: None,
+            notes: None,
+            address: None,
+            href: None,
+            etag: None,
+        };
+        let output = serialize_vcard(&contact);
+        assert!(output.contains("N:;Alice;;;"));
+    }
+
+    #[test]
+    fn test_serialize_vcard_three_part_name() {
+        let contact = Contact {
+            id: "uid-three".to_string(),
+            name: "John Q Smith".to_string(),
+            emails: vec![],
+            phones: vec![],
+            organization: None,
+            title: None,
+            notes: None,
+            address: None,
+            href: None,
+            etag: None,
+        };
+        let output = serialize_vcard(&contact);
+        assert!(output.contains("N:Smith;John;Q;;"));
+    }
+
+    #[test]
+    fn test_serialize_vcard_four_part_name() {
+        let contact = Contact {
+            id: "uid-four".to_string(),
+            name: "John Q R Smith".to_string(),
+            emails: vec![],
+            phones: vec![],
+            organization: None,
+            title: None,
+            notes: None,
+            address: None,
+            href: None,
+            etag: None,
+        };
+        let output = serialize_vcard(&contact);
+        assert!(output.contains("N:Smith;John;Q R;;"));
+    }
+
+    #[test]
+    fn test_serialize_vcard_address() {
+        let contact = Contact {
+            id: "uid-addr".to_string(),
+            name: "Test".to_string(),
+            emails: vec![],
+            phones: vec![],
+            organization: None,
+            title: None,
+            notes: None,
+            address: Some("123 Main St".to_string()),
+            href: None,
+            etag: None,
+        };
+        let output = serialize_vcard(&contact);
+        assert!(output.contains("ADR:;;123 Main St;;;;;"));
+    }
+
+    #[test]
+    fn test_serialize_vcard_optional_fields_none() {
+        let contact = Contact {
+            id: "uid-min".to_string(),
+            name: "Minimal".to_string(),
+            emails: vec![],
+            phones: vec![],
+            organization: None,
+            title: None,
+            notes: None,
+            address: None,
+            href: None,
+            etag: None,
+        };
+        let output = serialize_vcard(&contact);
+        assert!(!output.contains("ORG:"));
+        assert!(!output.contains("TITLE:"));
+        assert!(!output.contains("ADR:"));
+        assert!(!output.contains("NOTE:"));
+    }
+
+    #[test]
+    fn test_serialize_vcard_email_with_label() {
+        let contact = Contact {
+            id: "uid-email".to_string(),
+            name: "Test".to_string(),
+            emails: vec![ContactEmail {
+                email: "user@example.com".to_string(),
+                label: Some("work".to_string()),
+            }],
+            phones: vec![],
+            organization: None,
+            title: None,
+            notes: None,
+            address: None,
+            href: None,
+            etag: None,
+        };
+        let output = serialize_vcard(&contact);
+        assert!(output.contains("EMAIL;TYPE=work:user@example.com"));
+    }
+
+    #[test]
+    fn test_serialize_vcard_email_without_label() {
+        let contact = Contact {
+            id: "uid-email-nolabel".to_string(),
+            name: "Test".to_string(),
+            emails: vec![ContactEmail {
+                email: "user@example.com".to_string(),
+                label: None,
+            }],
+            phones: vec![],
+            organization: None,
+            title: None,
+            notes: None,
+            address: None,
+            href: None,
+            etag: None,
+        };
+        let output = serialize_vcard(&contact);
+        assert!(output.contains("EMAIL:user@example.com"));
+    }
+
+    #[test]
+    fn test_serialize_vcard_phone_with_label() {
+        let contact = Contact {
+            id: "uid-phone".to_string(),
+            name: "Test".to_string(),
+            emails: vec![],
+            phones: vec![ContactPhone {
+                number: "+1234567890".to_string(),
+                label: Some("cell".to_string()),
+            }],
+            organization: None,
+            title: None,
+            notes: None,
+            address: None,
+            href: None,
+            etag: None,
+        };
+        let output = serialize_vcard(&contact);
+        assert!(output.contains("TEL;TYPE=cell:+1234567890"));
+    }
+
+    #[test]
+    fn test_serialize_vcard_escaping_in_values() {
+        let contact = Contact {
+            id: "uid-escape".to_string(),
+            name: "Alice;Bob".to_string(),
+            emails: vec![],
+            phones: vec![],
+            organization: None,
+            title: None,
+            notes: None,
+            address: None,
+            href: None,
+            etag: None,
+        };
+        let output = serialize_vcard(&contact);
+        // Semicolon in name should be escaped in FN
+        assert!(output.contains("FN:Alice\\;Bob"));
+    }
+
+    #[test]
+    fn test_serialize_vcard_crlf_line_endings() {
+        let contact = make_basic_contact();
+        let output = serialize_vcard(&contact);
+        // Every line should end with \r\n
+        for line in output.split('\n') {
+            let line: &str = line;
+            if !line.is_empty() {
+                assert!(line.ends_with('\r'), "Line missing CR: {:?}", line);
+            }
+        }
+    }
+
+    #[test]
+    fn test_serialize_vcard_uid_present() {
+        let contact = make_basic_contact();
+        let output = serialize_vcard(&contact);
+        assert!(output.contains("UID:test-uid-001"));
+    }
+
+    #[test]
+    fn test_serialize_vcard_round_trip() {
+        let contact = Contact {
+            id: "uid-roundtrip".to_string(),
+            name: "Bob Builder".to_string(),
+            emails: vec![ContactEmail {
+                email: "bob@example.com".to_string(),
+                label: Some("work".to_string()),
+            }],
+            phones: vec![ContactPhone {
+                number: "+9876543210".to_string(),
+                label: Some("cell".to_string()),
+            }],
+            organization: Some("Build It Ltd".to_string()),
+            title: Some("Builder".to_string()),
+            notes: Some("Test notes".to_string()),
+            address: Some("99 Builder St".to_string()),
+            href: None,
+            etag: None,
+        };
+        let serialized = serialize_vcard(&contact);
+        let parsed = parse_vcard(&serialized, None, None).unwrap();
+        assert_eq!(parsed.name, contact.name);
+        assert_eq!(parsed.emails.len(), contact.emails.len());
+        assert_eq!(parsed.emails[0].email, contact.emails[0].email);
+        assert_eq!(parsed.phones.len(), contact.phones.len());
+        assert_eq!(parsed.phones[0].number, contact.phones[0].number);
+        assert_eq!(parsed.organization, contact.organization);
+        assert_eq!(parsed.title, contact.title);
+        assert_eq!(parsed.notes, contact.notes);
+        assert_eq!(parsed.address, contact.address);
+    }
+
+    #[test]
+    fn test_serialize_vcard_round_trip_special_chars() {
+        let contact = Contact {
+            id: "uid-special".to_string(),
+            name: "O'Brien".to_string(),
+            emails: vec![ContactEmail {
+                email: "obrien@example.com".to_string(),
+                label: None,
+            }],
+            phones: vec![],
+            organization: Some("Comma, Inc".to_string()),
+            title: None,
+            notes: None,
+            address: None,
+            href: None,
+            etag: None,
+        };
+        let serialized = serialize_vcard(&contact);
+        let parsed = parse_vcard(&serialized, None, None).unwrap();
+        assert_eq!(parsed.name, contact.name);
+        assert_eq!(parsed.organization, contact.organization);
+    }
 }
