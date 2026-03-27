@@ -18,6 +18,8 @@ Users can manage contacts (create, update, delete) without leaving the terminal 
 - ✓ CLI command structure with `contacts` subcommand — existing
 - ✓ Contact struct carries href/etag from server — Validated in Phase 1: Contact Model Foundation
 - ✓ Write-specific error variants (ContactNotFound, ContactConflict) — Validated in Phase 1: Contact Model Foundation
+- ✓ Generate valid vCard 3.0 with FN, N, EMAIL, ORG, TEL, ADR, NOTE — Validated in Phase 2: vCard Serialization
+- ✓ Line folding at 75 octets with CRLF, character escaping, UUID v4 UIDs — Validated in Phase 2: vCard Serialization
 
 ### Active
 
@@ -27,7 +29,6 @@ Users can manage contacts (create, update, delete) without leaving the terminal 
 - [ ] Expose `createContact` GraphQL mutation in MCP server
 - [ ] Expose `updateContact` GraphQL mutation in MCP server
 - [ ] Expose `deleteContact` GraphQL mutation in MCP server
-- [ ] Generate valid vCard data for CardDAV PUT requests
 - [ ] CardDAV write operations (PUT for create/update, DELETE for delete)
 
 ### Out of Scope
@@ -80,4 +81,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-27 after Phase 1 completion*
+*Last updated: 2026-03-27 after Phase 2 completion*
