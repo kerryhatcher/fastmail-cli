@@ -7,8 +7,8 @@
 
 ### Contact Model
 
-- [ ] **MOD-01**: Contact struct includes `href` (resource URL) and `etag` fields populated from REPORT responses
-- [ ] **MOD-02**: Error type includes ContactConflict (412) and ContactNotFound variants
+- [x] **MOD-01**: Contact struct includes `href` (resource URL) and `etag` fields populated from REPORT responses
+- [x] **MOD-02**: Error type includes ContactConflict (412) and ContactNotFound variants
 
 ### vCard Serialization
 
@@ -63,8 +63,8 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MOD-01 | Phase 1 | Pending |
-| MOD-02 | Phase 1 | Pending |
+| MOD-01 | Phase 1 | Complete |
+| MOD-02 | Phase 1 | Complete |
 | VCARD-01 | Phase 2 | Pending |
 | VCARD-02 | Phase 2 | Pending |
 | VCARD-03 | Phase 2 | Pending |

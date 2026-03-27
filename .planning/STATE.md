@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
-stopped_at: Phase 1 context gathered
-last_updated: "2026-03-27T21:31:15.404Z"
-last_activity: 2026-03-27 — Roadmap created, requirements mapped to 4 phases
+status: verifying
+stopped_at: Completed 01-contact-model-foundation/01-01-PLAN.md
+last_updated: "2026-03-27T22:19:07.770Z"
+last_activity: 2026-03-27
 progress:
   total_phases: 4
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Users can manage contacts (create, update, delete) without leaving the terminal or AI assistant
-**Current focus:** Phase 1 — Contact Model Foundation
+**Current focus:** Phase 01 — contact-model-foundation
 
 ## Current Position
 
-Phase: 1 of 4 (Contact Model Foundation)
-Plan: 0 of ? in current phase
-Status: Ready to plan
-Last activity: 2026-03-27 — Roadmap created, requirements mapped to 4 phases
+Phase: 01 (contact-model-foundation) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
+Last activity: 2026-03-27
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -52,6 +52,7 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: -
 
 *Updated after each plan completion*
+| Phase 01-contact-model-foundation P01 | 3 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -63,6 +64,9 @@ Recent decisions affecting current work:
 - Project init: Partial updates for contact update (user only specifies changed fields)
 - Project init: Flag-based delete confirmation (`--confirm`/`--yes`) — works in scripts and AI workflows
 - Project init: Support name, email, org, phone, address, notes fields
+- [Phase 01-contact-model-foundation]: Store ETag verbatim including surrounding double-quotes per RFC 7232 — quotes are part of the ETag token, stripping them would break If-Match headers in write operations
+- [Phase 01-contact-model-foundation]: No serde(skip) on href/etag in Contact struct — both fields serialize to JSON for caller inspection per D-05
+- [Phase 01-contact-model-foundation]: ContactConflict.server_etag is Option<String> because not all 412 HTTP responses include the server's current ETag
 
 ### Pending Todos
 
@@ -74,6 +78,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27T21:31:15.402Z
-Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-contact-model-foundation/01-CONTEXT.md
+Last session: 2026-03-27T22:19:07.768Z
+Stopped at: Completed 01-contact-model-foundation/01-01-PLAN.md
+Resume file: None
