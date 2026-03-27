@@ -13,7 +13,7 @@ This milestone extends fastmail-cli's read-only CardDAV integration with full cr
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Contact Model Foundation** - Extend Contact struct with href/etag fields and write-operation error variants (completed 2026-03-27)
-- [ ] **Phase 2: vCard Serialization** - Build and unit-test the vCard 3.0 generator as a pure, isolated function
+- [x] **Phase 2: vCard Serialization** - Build and unit-test the vCard 3.0 generator as a pure, isolated function (completed 2026-03-27)
 - [ ] **Phase 3: CardDAV Write Operations** - Implement PUT/DELETE HTTP methods with correct ETag conditional headers
 - [ ] **Phase 4: CLI & MCP Surfaces** - Wire create/update/delete into CLI subcommands and GraphQL mutations
 
@@ -41,10 +41,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Values containing semicolons, commas, or backslashes are escaped correctly
   4. Each newly generated contact receives a distinct UUID v4 UID
   5. All serializer behavior is covered by unit tests that pass without network access
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 02-01-PLAN.md — vCard 3.0 serializer with fold/escape helpers, address field, and TDD tests
+- [x] 02-01-PLAN.md — vCard 3.0 serializer with fold/escape helpers, address field, and TDD tests
 
 ### Phase 3: CardDAV Write Operations
 **Goal**: The CardDAV client can create, update, and delete contacts on Fastmail's server with correct conditional headers that prevent data loss from concurrent edits
@@ -78,6 +78,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Contact Model Foundation | 1/1 | Complete   | 2026-03-27 |
-| 2. vCard Serialization | 0/1 | Not started | - |
+| 2. vCard Serialization | 1/1 | Complete   | 2026-03-27 |
 | 3. CardDAV Write Operations | 0/? | Not started | - |
 | 4. CLI & MCP Surfaces | 0/? | Not started | - |

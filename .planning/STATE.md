@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: Phase 2 context gathered
-last_updated: "2026-03-27T22:29:23.923Z"
+stopped_at: Completed 02-vcard-serialization/02-01-PLAN.md
+last_updated: "2026-03-27T22:48:00.882Z"
 last_activity: 2026-03-27
 progress:
   total_phases: 4
-  completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
+  completed_phases: 2
+  total_plans: 2
+  completed_plans: 2
   percent: 0
 ---
 
@@ -21,12 +21,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Users can manage contacts (create, update, delete) without leaving the terminal or AI assistant
-**Current focus:** Phase 01 — contact-model-foundation
+**Current focus:** Phase 02 — vcard-serialization
 
 ## Current Position
 
-Phase: 2
-Plan: Not started
+Phase: 02 (vcard-serialization) — EXECUTING
+Plan: 1 of 1
 Status: Phase complete — ready for verification
 Last activity: 2026-03-27
 
@@ -53,6 +53,7 @@ Progress: [░░░░░░░░░░] 0%
 
 *Updated after each plan completion*
 | Phase 01-contact-model-foundation P01 | 3 | 2 tasks | 3 files |
+| Phase 02-vcard-serialization P01 | 321s | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -67,6 +68,8 @@ Recent decisions affecting current work:
 - [Phase 01-contact-model-foundation]: Store ETag verbatim including surrounding double-quotes per RFC 7232 — quotes are part of the ETag token, stripping them would break If-Match headers in write operations
 - [Phase 01-contact-model-foundation]: No serde(skip) on href/etag in Contact struct — both fields serialize to JSON for caller inspection per D-05
 - [Phase 01-contact-model-foundation]: ContactConflict.server_etag is Option<String> because not all 412 HTTP responses include the server's current ETag
+- [Phase 02-vcard-serialization]: unescape_value() added to parse_vcard: round-trip test revealed missing backslash unescaping in parser; fixed as Rule 1 deviation
+- [Phase 02-vcard-serialization]: uuid::Uuid re-exported as pub use from carddav module so Phase 3 callers can access Uuid::new_v4() without separate dependency
 
 ### Pending Todos
 
@@ -78,6 +81,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27T22:29:23.920Z
-Stopped at: Phase 2 context gathered
-Resume file: .planning/phases/02-vcard-serialization/02-CONTEXT.md
+Last session: 2026-03-27T22:48:00.879Z
+Stopped at: Completed 02-vcard-serialization/02-01-PLAN.md
+Resume file: None

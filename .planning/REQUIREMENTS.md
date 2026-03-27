@@ -12,9 +12,9 @@
 
 ### vCard Serialization
 
-- [ ] **VCARD-01**: Generate valid vCard 3.0 with FN, N, EMAIL, ORG, TEL, ADR, NOTE properties
-- [ ] **VCARD-02**: Line folding at 75 octets with CRLF line endings per RFC 6350
-- [ ] **VCARD-03**: UUID v4 generation for new contact UIDs
+- [x] **VCARD-01**: Generate valid vCard 3.0 with FN, N, EMAIL, ORG, TEL, ADR, NOTE properties
+- [x] **VCARD-02**: Line folding at 75 octets with CRLF line endings per RFC 6350
+- [x] **VCARD-03**: UUID v4 generation for new contact UIDs
 
 ### CardDAV Write Operations
 
@@ -65,9 +65,9 @@
 |-------------|-------|--------|
 | MOD-01 | Phase 1 | Complete |
 | MOD-02 | Phase 1 | Complete |
-| VCARD-01 | Phase 2 | Pending |
-| VCARD-02 | Phase 2 | Pending |
-| VCARD-03 | Phase 2 | Pending |
+| VCARD-01 | Phase 2 | Complete |
+| VCARD-02 | Phase 2 | Complete |
+| VCARD-03 | Phase 2 | Complete |
 | DAV-01 | Phase 3 | Pending |
 | DAV-02 | Phase 3 | Pending |
 | DAV-03 | Phase 3 | Pending |
