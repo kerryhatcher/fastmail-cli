@@ -27,7 +27,9 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. A contact returned by `contacts list` includes its server-assigned href URL and ETag string
   2. Attempting to update a contact that no longer exists returns a ContactNotFound error (not a generic HTTP error)
   3. Attempting to write a contact that has been modified since last read returns a ContactConflict error distinguishable from other failures
-**Plans**: TBD
+**Plans:** 1 plan
+
+- [ ] 01-01-PLAN.md — Contact model href/etag fields + error variants
 
 ### Phase 2: vCard Serialization
 **Goal**: Given a set of contact fields, the CLI can generate a valid vCard 3.0 string with proper line folding, character escaping, and a unique UID — all verifiable without network access
@@ -72,7 +74,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Contact Model Foundation | 0/? | Not started | - |
+| 1. Contact Model Foundation | 0/1 | Not started | - |
 | 2. vCard Serialization | 0/? | Not started | - |
 | 3. CardDAV Write Operations | 0/? | Not started | - |
 | 4. CLI & MCP Surfaces | 0/? | Not started | - |
