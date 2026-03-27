@@ -30,6 +30,16 @@ pub enum Error {
     #[error("Email not found: {0}")]
     EmailNotFound(String),
 
+    #[error("Contact not found: {0}")]
+    ContactNotFound(String),
+
+    #[error("Contact conflict for '{id}': sent ETag '{sent_etag}', server has '{server_etag:?}'")]
+    ContactConflict {
+        id: String,
+        sent_etag: String,
+        server_etag: Option<String>,
+    },
+
     #[error("Identity not found for sending")]
     IdentityNotFound,
 
