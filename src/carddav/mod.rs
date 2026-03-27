@@ -5,6 +5,9 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, instrument};
+// Uuid is imported for use by callers (Phase 3: create_contact will call Uuid::new_v4())
+#[allow(unused_imports)]
+pub use uuid::Uuid;
 
 use crate::error::{Error, Result};
 
@@ -329,13 +332,14 @@ fn parse_vcard(vcard_str: &str, href: Option<String>, etag: Option<String>) -> O
     for line in unfolded.lines() {
         let line = line.trim();
 
-        // Extract property value, handling optional parameters and QP encoding
+        // Extract property value, handling optional parameters and QP encoding,
+        // then unescape backslash-escaped characters per RFC 2426 §5.
         let extract_value = |line: &str| -> String {
             let value = line.split_once(':').map(|(_, v)| v).unwrap_or("");
             if line.to_uppercase().contains("ENCODING=QUOTED-PRINTABLE") {
                 decode_qp(value)
             } else {
-                value.to_string()
+                unescape_value(value)
             }
         };
 
@@ -413,6 +417,173 @@ fn parse_vcard(vcard_str: &str, href: Option<String>, etag: Option<String>) -> O
         href,
         etag,
     })
+}
+
+/// Escape special characters in a vCard property value per RFC 2426 §5.
+///
+/// Must escape backslash first to avoid double-escaping.
+fn escape_value(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace(';', "\\;")
+        .replace(',', "\\,")
+        .replace('\n', "\\n")
+}
+
+/// Unescape backslash-escaped characters in a vCard property value per RFC 2426 §5.
+///
+/// Inverse of escape_value: converts `\\` → `\`, `\;` → `;`, `\,` → `,`, `\n` → newline.
+fn unescape_value(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.peek() {
+                Some('\\') => {
+                    result.push('\\');
+                    chars.next();
+                }
+                Some(';') => {
+                    result.push(';');
+                    chars.next();
+                }
+                Some(',') => {
+                    result.push(',');
+                    chars.next();
+                }
+                Some('n') => {
+                    result.push('\n');
+                    chars.next();
+                }
+                _ => {
+                    result.push(c);
+                }
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
+/// Fold a vCard property line at 75 octets per RFC 6350 §3.2.
+///
+/// First physical line: max 75 bytes (excluding CRLF).
+/// Continuation lines: max 74 bytes of content (1 byte is leading space).
+/// UTF-8 characters are never split across fold boundaries.
+fn fold_line(line: &str) -> String {
+    const FIRST_MAX: usize = 75;
+    const CONT_MAX: usize = 74;
+
+    if line.len() <= FIRST_MAX {
+        return format!("{}\r\n", line);
+    }
+
+    let mut result = String::new();
+
+    // First chunk: up to 75 bytes, walking back to a char boundary
+    let mut end = FIRST_MAX.min(line.len());
+    while !line.is_char_boundary(end) {
+        end -= 1;
+    }
+    result.push_str(&line[..end]);
+    result.push_str("\r\n ");
+    let mut pos = end;
+
+    // Continuation chunks: up to 74 bytes of content each
+    while pos < line.len() {
+        let remaining = &line[pos..];
+        if remaining.len() <= CONT_MAX {
+            result.push_str(remaining);
+            break;
+        }
+        let mut chunk_end = CONT_MAX.min(remaining.len());
+        while !remaining.is_char_boundary(chunk_end) {
+            chunk_end -= 1;
+        }
+        result.push_str(&remaining[..chunk_end]);
+        result.push_str("\r\n ");
+        pos += chunk_end;
+    }
+
+    result.push_str("\r\n");
+    result
+}
+
+/// Serialize a Contact to a vCard 3.0 string.
+///
+/// The returned string uses CRLF line endings and line folding at 75 octets
+/// per RFC 6350 §3.2. Character values are escaped per RFC 2426 §5.
+/// The contact's `id` field is used as the UID; callers must supply a
+/// UUID v4 for new contacts (use `Uuid::new_v4().to_string()`).
+pub fn serialize_vcard(contact: &Contact) -> String {
+    let mut lines: Vec<String> = Vec::new();
+
+    lines.push("BEGIN:VCARD".to_string());
+    lines.push("VERSION:3.0".to_string());
+    lines.push(format!("UID:{}", contact.id));
+    lines.push(format!("FN:{}", escape_value(&contact.name)));
+
+    // N property: decompose name by whitespace tokens
+    // D-01: first token = given name, last token = family name (if >1 token),
+    // middle tokens joined. Single token: given only, family empty.
+    let tokens: Vec<&str> = contact.name.split_whitespace().collect();
+    let (family, given, middle) = match tokens.len() {
+        0 => ("".to_string(), "".to_string(), "".to_string()),
+        1 => ("".to_string(), escape_value(tokens[0]), "".to_string()),
+        2 => (
+            escape_value(tokens[1]),
+            escape_value(tokens[0]),
+            "".to_string(),
+        ),
+        _ => {
+            let last = tokens.len() - 1;
+            let mid = tokens[1..last].join(" ");
+            (
+                escape_value(tokens[last]),
+                escape_value(tokens[0]),
+                escape_value(&mid),
+            )
+        }
+    };
+    lines.push(format!("N:{};{};{};;", family, given, middle));
+
+    // EMAIL properties
+    for email in &contact.emails {
+        if let Some(label) = &email.label {
+            lines.push(format!("EMAIL;TYPE={}:{}", label, email.email));
+        } else {
+            lines.push(format!("EMAIL:{}", email.email));
+        }
+    }
+
+    // TEL properties
+    for phone in &contact.phones {
+        if let Some(label) = &phone.label {
+            lines.push(format!("TEL;TYPE={}:{}", label, phone.number));
+        } else {
+            lines.push(format!("TEL:{}", phone.number));
+        }
+    }
+
+    // Optional properties
+    if let Some(org) = &contact.organization {
+        lines.push(format!("ORG:{}", escape_value(org)));
+    }
+    if let Some(title) = &contact.title {
+        lines.push(format!("TITLE:{}", escape_value(title)));
+    }
+    // ADR: ;;street;;;;; (6 semicolons: PO box;extended;street;locality;region;postal;country)
+    if let Some(street) = &contact.address {
+        lines.push(format!("ADR:;;{};;;;;", escape_value(street)));
+    }
+    if let Some(notes) = &contact.notes {
+        lines.push(format!("NOTE:{}", escape_value(notes)));
+    }
+
+    lines.push("END:VCARD".to_string());
+
+    // Apply fold_line to each property line, then concatenate
+    lines.iter().map(|l| fold_line(l)).collect::<String>()
 }
 
 /// Simple SipHash-based hash for generating stable contact IDs
