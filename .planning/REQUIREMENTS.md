@@ -63,27 +63,27 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MOD-01 | Phase ? | Pending |
-| MOD-02 | Phase ? | Pending |
-| VCARD-01 | Phase ? | Pending |
-| VCARD-02 | Phase ? | Pending |
-| VCARD-03 | Phase ? | Pending |
-| DAV-01 | Phase ? | Pending |
-| DAV-02 | Phase ? | Pending |
-| DAV-03 | Phase ? | Pending |
-| DAV-04 | Phase ? | Pending |
-| CLI-01 | Phase ? | Pending |
-| CLI-02 | Phase ? | Pending |
-| CLI-03 | Phase ? | Pending |
-| MCP-01 | Phase ? | Pending |
-| MCP-02 | Phase ? | Pending |
-| MCP-03 | Phase ? | Pending |
+| MOD-01 | Phase 1 | Pending |
+| MOD-02 | Phase 1 | Pending |
+| VCARD-01 | Phase 2 | Pending |
+| VCARD-02 | Phase 2 | Pending |
+| VCARD-03 | Phase 2 | Pending |
+| DAV-01 | Phase 3 | Pending |
+| DAV-02 | Phase 3 | Pending |
+| DAV-03 | Phase 3 | Pending |
+| DAV-04 | Phase 3 | Pending |
+| CLI-01 | Phase 4 | Pending |
+| CLI-02 | Phase 4 | Pending |
+| CLI-03 | Phase 4 | Pending |
+| MCP-01 | Phase 4 | Pending |
+| MCP-02 | Phase 4 | Pending |
+| MCP-03 | Phase 4 | Pending |
 
 **Coverage:**
 - v1 requirements: 15 total
-- Mapped to phases: 0
-- Unmapped: 15 ⚠️
+- Mapped to phases: 15
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-03-27*
-*Last updated: 2026-03-27 after initial definition*
+*Last updated: 2026-03-27 after roadmap creation — all 15 requirements mapped*

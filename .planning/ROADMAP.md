@@ -1,0 +1,78 @@
+# Roadmap: Contact CRUD via CardDAV
+
+## Overview
+
+This milestone extends fastmail-cli's read-only CardDAV integration with full create, update, and delete operations. The build order is dictated by hard code dependencies: the Contact struct must carry server-assigned href and etag before any write operation is possible; the vCard serializer must produce valid output before any HTTP call is made; the CardDAV HTTP methods must be proven before CLI and MCP surfaces wrap them. The result is a four-phase sequence where each phase is fully testable before the next begins.
+
+## Phases
+
+**Phase Numbering:**
+- Integer phases (1, 2, 3): Planned milestone work
+- Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
+
+Decimal phases appear between their surrounding integers in numeric order.
+
+- [ ] **Phase 1: Contact Model Foundation** - Extend Contact struct with href/etag fields and write-operation error variants
+- [ ] **Phase 2: vCard Serialization** - Build and unit-test the vCard 3.0 generator as a pure, isolated function
+- [ ] **Phase 3: CardDAV Write Operations** - Implement PUT/DELETE HTTP methods with correct ETag conditional headers
+- [ ] **Phase 4: CLI & MCP Surfaces** - Wire create/update/delete into CLI subcommands and GraphQL mutations
+
+## Phase Details
+
+### Phase 1: Contact Model Foundation
+**Goal**: The Contact type carries the server-supplied resource URL and ETag needed by all write operations, and the error type can express write-specific failures
+**Depends on**: Nothing (first phase)
+**Requirements**: MOD-01, MOD-02
+**Success Criteria** (what must be TRUE):
+  1. A contact returned by `contacts list` includes its server-assigned href URL and ETag string
+  2. Attempting to update a contact that no longer exists returns a ContactNotFound error (not a generic HTTP error)
+  3. Attempting to write a contact that has been modified since last read returns a ContactConflict error distinguishable from other failures
+**Plans**: TBD
+
+### Phase 2: vCard Serialization
+**Goal**: Given a set of contact fields, the CLI can generate a valid vCard 3.0 string with proper line folding, character escaping, and a unique UID — all verifiable without network access
+**Depends on**: Phase 1
+**Requirements**: VCARD-01, VCARD-02, VCARD-03
+**Success Criteria** (what must be TRUE):
+  1. A generated vCard contains required FN, N, and VERSION:3.0 properties
+  2. Lines longer than 75 octets are folded with CRLF + space per RFC 6350
+  3. Values containing semicolons, commas, or backslashes are escaped correctly
+  4. Each newly generated contact receives a distinct UUID v4 UID
+  5. All serializer behavior is covered by unit tests that pass without network access
+**Plans**: TBD
+
+### Phase 3: CardDAV Write Operations
+**Goal**: The CardDAV client can create, update, and delete contacts on Fastmail's server with correct conditional headers that prevent data loss from concurrent edits
+**Depends on**: Phase 2
+**Requirements**: DAV-01, DAV-02, DAV-03, DAV-04
+**Success Criteria** (what must be TRUE):
+  1. A new contact PUT to the address book URL with `If-None-Match: *` appears in subsequent `contacts list` output
+  2. Updating a contact sends the full rewritten vCard with `If-Match: "{etag}"` and the contact reflects the changed fields afterward
+  3. Deleting a contact with its current ETag removes it from subsequent list output
+  4. Attempting to update or delete a stale contact (ETag mismatch) returns a ContactConflict error, not a silent success
+**Plans**: TBD
+
+### Phase 4: CLI & MCP Surfaces
+**Goal**: Users can create, update, and delete contacts from the terminal and from AI assistants via the MCP server, with the delete operation requiring explicit confirmation in both surfaces
+**Depends on**: Phase 3
+**Requirements**: CLI-01, CLI-02, CLI-03, MCP-01, MCP-02, MCP-03
+**Success Criteria** (what must be TRUE):
+  1. `fastmail contacts create --name "Jane Doe" --email jane@example.com` creates the contact and prints a success confirmation
+  2. `fastmail contacts update CONTACT_ID --phone "+1 555 0100"` updates only the phone field, leaving all other fields unchanged
+  3. `fastmail contacts delete CONTACT_ID` without `--confirm` or `--yes` exits with a non-zero code and an explanatory message
+  4. The `createContact` and `updateContact` GraphQL mutations return the created/updated contact data
+  5. The `deleteContact` GraphQL mutation requires a valid PREVIEW/CONFIRM token and deletes the correct contact
+**UI hint**: no
+**Plans**: TBD
+
+## Progress
+
+**Execution Order:**
+Phases execute in numeric order: 1 → 2 → 3 → 4
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 1. Contact Model Foundation | 0/? | Not started | - |
+| 2. vCard Serialization | 0/? | Not started | - |
+| 3. CardDAV Write Operations | 0/? | Not started | - |
+| 4. CLI & MCP Surfaces | 0/? | Not started | - |
