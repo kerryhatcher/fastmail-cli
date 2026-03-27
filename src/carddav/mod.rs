@@ -27,6 +27,12 @@ pub struct Contact {
     pub title: Option<String>,
     /// Notes
     pub notes: Option<String>,
+    /// Server-assigned resource URL (from CardDAV REPORT <d:href>).
+    /// Required for PUT/DELETE write operations.
+    pub href: Option<String>,
+    /// HTTP ETag for optimistic concurrency control.
+    /// Required for If-Match header in update/delete operations.
+    pub etag: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -202,11 +208,23 @@ impl CardDavClient {
             .descendants()
             .filter(|n| n.has_tag_name((dav_ns, "response")))
         {
+            let href = response
+                .descendants()
+                .find(|n| n.has_tag_name((dav_ns, "href")))
+                .and_then(|n| n.text())
+                .map(|s| s.to_string());
+
+            let etag = response
+                .descendants()
+                .find(|n| n.has_tag_name((dav_ns, "getetag")))
+                .and_then(|n| n.text())
+                .map(|s| s.to_string());
+
             if let Some(vcard_data) = response
                 .descendants()
                 .find(|n| n.has_tag_name((carddav_ns, "address-data")))
                 .and_then(|n| n.text())
-                && let Some(contact) = parse_vcard(vcard_data)
+                && let Some(contact) = parse_vcard(vcard_data, href, etag)
             {
                 contacts.push(contact);
             }
@@ -295,7 +313,7 @@ fn decode_qp(s: &str) -> String {
 }
 
 /// Parse a vCard string into a Contact
-fn parse_vcard(vcard_str: &str) -> Option<Contact> {
+fn parse_vcard(vcard_str: &str, href: Option<String>, etag: Option<String>) -> Option<Contact> {
     let unfolded = unfold_vcard(vcard_str);
     let mut id = String::new();
     let mut name = String::new();
@@ -377,6 +395,8 @@ fn parse_vcard(vcard_str: &str) -> Option<Contact> {
         organization,
         title,
         notes,
+        href,
+        etag,
     })
 }
 
@@ -421,7 +441,7 @@ mod tests {
     #[test]
     fn test_parse_vcard_basic() {
         let vcard = "BEGIN:VCARD\nVERSION:3.0\nUID:abc123\nFN:Alice Smith\nEMAIL:alice@example.com\nEND:VCARD";
-        let contact = parse_vcard(vcard).unwrap();
+        let contact = parse_vcard(vcard, None, None).unwrap();
         assert_eq!(contact.id, "abc123");
         assert_eq!(contact.name, "Alice Smith");
         assert_eq!(contact.emails.len(), 1);
@@ -433,14 +453,14 @@ mod tests {
         // Fold happens mid-value: "Very Long Name Here" folded after "Na"
         // Continuation line starts with space (fold indicator consumed)
         let vcard = "BEGIN:VCARD\nFN:Very Long Na\n me Here\nEMAIL:test@example.com\nEND:VCARD";
-        let contact = parse_vcard(vcard).unwrap();
+        let contact = parse_vcard(vcard, None, None).unwrap();
         assert_eq!(contact.name, "Very Long Name Here");
     }
 
     #[test]
     fn test_parse_vcard_with_params() {
         let vcard = "BEGIN:VCARD\nFN:Bob\nEMAIL;TYPE=work:bob@work.com\nTEL;TYPE=cell:+1234567890\nORG:Acme Inc\nTITLE:Engineer\nEND:VCARD";
-        let contact = parse_vcard(vcard).unwrap();
+        let contact = parse_vcard(vcard, None, None).unwrap();
         assert_eq!(contact.emails[0].email, "bob@work.com");
         assert_eq!(contact.emails[0].label, Some("work".to_string()));
         assert_eq!(contact.phones[0].number, "+1234567890");
@@ -451,13 +471,55 @@ mod tests {
     #[test]
     fn test_parse_vcard_generates_id_when_missing() {
         let vcard = "BEGIN:VCARD\nFN:No UID\nEND:VCARD";
-        let contact = parse_vcard(vcard).unwrap();
+        let contact = parse_vcard(vcard, None, None).unwrap();
         assert!(!contact.id.is_empty());
     }
 
     #[test]
     fn test_parse_vcard_returns_none_without_name() {
         let vcard = "BEGIN:VCARD\nUID:abc\nEMAIL:test@example.com\nEND:VCARD";
-        assert!(parse_vcard(vcard).is_none());
+        assert!(parse_vcard(vcard, None, None).is_none());
+    }
+
+    #[test]
+    fn test_parse_vcard_with_href_etag() {
+        let vcard = "BEGIN:VCARD\nVERSION:3.0\nUID:abc123\nFN:Test Contact\nEND:VCARD";
+        let contact = parse_vcard(
+            vcard,
+            Some("/dav/abc.vcf".to_string()),
+            Some("\"etag123\"".to_string()),
+        )
+        .unwrap();
+        assert_eq!(contact.href, Some("/dav/abc.vcf".to_string()));
+        assert_eq!(contact.etag, Some("\"etag123\"".to_string()));
+    }
+
+    #[test]
+    fn test_parse_contacts_response_extracts_href_etag() {
+        let client = CardDavClient::new("testuser".to_string(), "testpass".to_string());
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">
+  <d:response>
+    <d:href>/dav/addressbooks/user/testuser/Default/contact1.vcf</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:getetag>"etag-value-123"</d:getetag>
+        <card:address-data>BEGIN:VCARD
+VERSION:3.0
+UID:uid-001
+FN:Test Contact
+EMAIL:test@example.com
+END:VCARD</card:address-data>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>"#;
+        let contacts = client.parse_contacts_response(xml).unwrap();
+        assert_eq!(contacts.len(), 1);
+        assert_eq!(
+            contacts[0].href,
+            Some("/dav/addressbooks/user/testuser/Default/contact1.vcf".to_string())
+        );
+        assert_eq!(contacts[0].etag, Some("\"etag-value-123\"".to_string()));
     }
 }
