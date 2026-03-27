@@ -27,6 +27,8 @@ pub struct Contact {
     pub title: Option<String>,
     /// Notes
     pub notes: Option<String>,
+    /// Street address (from ADR property, street component)
+    pub address: Option<String>,
     /// Server-assigned resource URL (from CardDAV REPORT <d:href>).
     /// Required for PUT/DELETE write operations.
     pub href: Option<String>,
@@ -322,6 +324,7 @@ fn parse_vcard(vcard_str: &str, href: Option<String>, etag: Option<String>) -> O
     let mut organization = None;
     let mut title = None;
     let mut notes = None;
+    let mut address = None;
 
     for line in unfolded.lines() {
         let line = line.trim();
@@ -374,6 +377,17 @@ fn parse_vcard(vcard_str: &str, href: Option<String>, etag: Option<String>) -> O
             title = Some(extract_value(line));
         } else if line.starts_with("NOTE") && line.contains(':') {
             notes = Some(extract_value(line));
+        } else if line.starts_with("ADR") && line.contains(':') {
+            // ADR format: PO Box;Extended;Street;Locality;Region;Postal;Country
+            // We extract the street component (index 2)
+            let value = extract_value(line);
+            let parts: Vec<&str> = value.splitn(7, ';').collect();
+            if parts.len() > 2 {
+                let street = parts[2].trim();
+                if !street.is_empty() {
+                    address = Some(street.to_string());
+                }
+            }
         }
     }
 
@@ -395,6 +409,7 @@ fn parse_vcard(vcard_str: &str, href: Option<String>, etag: Option<String>) -> O
         organization,
         title,
         notes,
+        address,
         href,
         etag,
     })
@@ -492,6 +507,54 @@ mod tests {
         .unwrap();
         assert_eq!(contact.href, Some("/dav/abc.vcf".to_string()));
         assert_eq!(contact.etag, Some("\"etag123\"".to_string()));
+    }
+
+    #[test]
+    fn test_contact_address_some() {
+        let c = Contact {
+            id: "id1".to_string(),
+            name: "Test".to_string(),
+            emails: vec![],
+            phones: vec![],
+            organization: None,
+            title: None,
+            notes: None,
+            address: Some("123 Main St".to_string()),
+            href: None,
+            etag: None,
+        };
+        assert_eq!(c.address, Some("123 Main St".to_string()));
+    }
+
+    #[test]
+    fn test_contact_address_none() {
+        let c = Contact {
+            id: "id2".to_string(),
+            name: "Test".to_string(),
+            emails: vec![],
+            phones: vec![],
+            organization: None,
+            title: None,
+            notes: None,
+            address: None,
+            href: None,
+            etag: None,
+        };
+        assert!(c.address.is_none());
+    }
+
+    #[test]
+    fn test_parse_vcard_address_adr() {
+        let vcard = "BEGIN:VCARD\nVERSION:3.0\nUID:abc\nFN:Alice\nADR:;;123 Main St;;;;;\nEND:VCARD";
+        let contact = parse_vcard(vcard, None, None).unwrap();
+        assert_eq!(contact.address, Some("123 Main St".to_string()));
+    }
+
+    #[test]
+    fn test_parse_vcard_address_none_when_no_adr() {
+        let vcard = "BEGIN:VCARD\nVERSION:3.0\nUID:abc\nFN:Alice\nEND:VCARD";
+        let contact = parse_vcard(vcard, None, None).unwrap();
+        assert!(contact.address.is_none());
     }
 
     #[test]

@@ -425,6 +425,7 @@ pub struct GqlContact {
     pub organization: Option<String>,
     pub title: Option<String>,
     pub notes: Option<String>,
+    pub address: Option<String>,
     pub href: Option<String>,
     pub etag: Option<String>,
 }
@@ -439,6 +440,7 @@ impl From<Contact> for GqlContact {
             organization: c.organization,
             title: c.title,
             notes: c.notes,
+            address: c.address,
             href: c.href,
             etag: c.etag,
         }
