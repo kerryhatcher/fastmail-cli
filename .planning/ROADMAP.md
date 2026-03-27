@@ -41,7 +41,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Values containing semicolons, commas, or backslashes are escaped correctly
   4. Each newly generated contact receives a distinct UUID v4 UID
   5. All serializer behavior is covered by unit tests that pass without network access
-**Plans**: TBD
+**Plans:** 1 plan
+
+Plans:
+- [ ] 02-01-PLAN.md — vCard 3.0 serializer with fold/escape helpers, address field, and TDD tests
 
 ### Phase 3: CardDAV Write Operations
 **Goal**: The CardDAV client can create, update, and delete contacts on Fastmail's server with correct conditional headers that prevent data loss from concurrent edits
@@ -75,6 +78,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Contact Model Foundation | 1/1 | Complete   | 2026-03-27 |
-| 2. vCard Serialization | 0/? | Not started | - |
+| 2. vCard Serialization | 0/1 | Not started | - |
 | 3. CardDAV Write Operations | 0/? | Not started | - |
 | 4. CLI & MCP Surfaces | 0/? | Not started | - |
