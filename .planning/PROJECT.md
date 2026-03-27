@@ -16,6 +16,8 @@ Users can manage contacts (create, update, delete) without leaving the terminal 
 - ✓ Contact search via CardDAV — existing
 - ✓ MCP server with GraphQL queries for contacts — existing
 - ✓ CLI command structure with `contacts` subcommand — existing
+- ✓ Contact struct carries href/etag from server — Validated in Phase 1: Contact Model Foundation
+- ✓ Write-specific error variants (ContactNotFound, ContactConflict) — Validated in Phase 1: Contact Model Foundation
 
 ### Active
 
@@ -78,4 +80,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-27 after initialization*
+*Last updated: 2026-03-27 after Phase 1 completion*
