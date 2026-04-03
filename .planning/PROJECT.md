@@ -2,11 +2,18 @@
 
 ## What This Is
 
-Adding contact create, update, and delete operations to fastmail-cli, extending the existing CardDAV read-only integration. Exposes these as both CLI commands (`contacts create/update/delete`) and GraphQL mutations in the MCP server. Implements radiosilence/fastmail-cli#17.
+fastmail-cli now supports contact create, update, and delete operations on top of the existing CardDAV read integration. These flows are exposed as CLI commands (`contacts create/update/delete`) and GraphQL mutations in the MCP server. Implements radiosilence/fastmail-cli#17.
 
 ## Core Value
 
 Users can manage contacts (create, update, delete) without leaving the terminal or AI assistant, building on the existing CardDAV plumbing.
+
+## Current State
+
+- Shipped milestone: `v1.0` on 2026-04-03
+- Delivered: CardDAV-backed contact CRUD in both CLI and MCP GraphQL surfaces
+- Verification status: milestone audit passed; local tests and lint gates were green during completion
+- Remaining risk: live Fastmail validation is still recommended for final confidence in server-specific CardDAV behavior
 
 ## Requirements
 
@@ -20,16 +27,17 @@ Users can manage contacts (create, update, delete) without leaving the terminal 
 - ✓ Write-specific error variants (ContactNotFound, ContactConflict) — Validated in Phase 1: Contact Model Foundation
 - ✓ Generate valid vCard 3.0 with FN, N, EMAIL, ORG, TEL, ADR, NOTE — Validated in Phase 2: vCard Serialization
 - ✓ Line folding at 75 octets with CRLF, character escaping, UUID v4 UIDs — Validated in Phase 2: vCard Serialization
+- ✓ CardDAV create/update/delete with ETag-guarded writes — Validated in Phase 3: CardDAV Write Operations
+- ✓ CLI contact create/update/delete with partial updates and explicit delete confirmation — Validated in Phase 4: CLI & MCP Surfaces
+- ✓ MCP `createContact`, `updateContact`, and `deleteContact` mutations — Validated in Phase 4: CLI & MCP Surfaces
 
 ### Active
 
-- [ ] Create contacts via CLI with name, email, organization, phone, address, notes fields
-- [ ] Update contacts via CLI with partial updates (only modify fields explicitly passed)
-- [ ] Delete contacts via CLI with `--confirm`/`--yes` flag requirement
-- [ ] Expose `createContact` GraphQL mutation in MCP server
-- [ ] Expose `updateContact` GraphQL mutation in MCP server
-- [ ] Expose `deleteContact` GraphQL mutation in MCP server
-- [ ] CardDAV write operations (PUT for create/update, DELETE for delete)
+- [ ] Multi-value email support for contact create/update
+- [ ] Multi-value phone support for contact create/update
+- [ ] TYPE parameter support for email and phone labels
+- [ ] Address book selection for create operations
+- [ ] Address book listing for user discovery
 
 ### Out of Scope
 
@@ -42,10 +50,10 @@ Users can manage contacts (create, update, delete) without leaving the terminal 
 ## Context
 
 - **Existing codebase:** Rust 2024 edition, async with tokio, clap for CLI, async-graphql for MCP
-- **CardDAV client:** `src/carddav/mod.rs` handles contact discovery and vCard parsing via reqwest + roxmltree
-- **Contact commands:** `src/commands/contacts.rs` has `list` and `search` subcommands
-- **MCP GraphQL:** `src/mcp/graphql/` exposes queries; mutations need to be added
-- **vCard format:** Contacts stored as vCard 3.0/4.0 on Fastmail's CardDAV server
+- **CardDAV client:** `src/carddav/mod.rs` now handles discovery, parsing, serialization, and CRUD write operations
+- **Contact commands:** `src/commands/contacts.rs` now supports `list`, `search`, `create`, `update`, and `delete`
+- **MCP GraphQL:** `src/mcp/graphql/` now exposes both contact queries and mutations
+- **vCard format:** Contacts are written as vCard 3.0 for Fastmail compatibility
 - **Issue:** radiosilence/fastmail-cli#17
 
 ## Constraints
@@ -59,9 +67,19 @@ Users can manage contacts (create, update, delete) without leaving the terminal 
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Partial updates for contact update | Better UX — user only specifies changed fields | — Pending |
-| Flag-based delete confirmation (`--confirm`/`--yes`) | No interactive prompts, works in scripts and AI workflows | — Pending |
-| Support name, email, org, phone, address, notes | Covers common contact fields without over-engineering | — Pending |
+| Partial updates for contact update | Better UX — user only specifies changed fields | ✓ Shipped in v1.0 |
+| Flag-based delete confirmation (`--confirm`/`--yes`) | No interactive prompts, works in scripts and AI workflows | ✓ Shipped in v1.0 |
+| Support name, email, org, phone, address, notes | Covers common contact fields without over-engineering | ✓ Shipped in v1.0 |
+| Store ETag verbatim including surrounding quotes | Required for correct `If-Match` behavior against CardDAV servers | ✓ Shipped in v1.0 |
+| Serialize `href` and `etag` in contact JSON/GraphQL output | Callers need raw server metadata for inspection and follow-on operations | ✓ Shipped in v1.0 |
+| `ContactConflict.server_etag` remains optional | 412 responses may not include the server's latest ETag | ✓ Shipped in v1.0 |
+
+## Next Milestone Goals
+
+- Expand contact writes to support multi-value emails and phones
+- Add richer TYPE handling for contact methods
+- Let users choose an address book explicitly during create flows
+- Keep the current CRUD flows stable while validating against live Fastmail behavior
 
 ## Evolution
 
@@ -81,4 +99,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-27 after Phase 2 completion*
+*Last updated: 2026-04-03 after v1.0 milestone completion*

@@ -18,10 +18,10 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-27)
+See: .planning/PROJECT.md (updated 2026-04-03)
 
 **Core value:** Users can manage contacts (create, update, delete) without leaving the terminal or AI assistant
-**Current focus:** v1.0 archived
+**Current focus:** Planning next milestone
 
 ## Current Position
 

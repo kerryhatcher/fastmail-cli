@@ -2,7 +2,7 @@
 
 ## v1.0 milestone (Shipped: 2026-04-03)
 
-**Phases completed:** 4 phases, 4 plans, 2 tasks
+**Phases completed:** 4 phases, 4 plans, 9 tasks
 
 **Key accomplishments:**
 
