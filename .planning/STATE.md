@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: v1.0 milestone complete
-stopped_at: v1.0 milestone completed and archived
-last_updated: "2026-04-03T09:17:41.803Z"
+milestone: v1.1
+milestone_name: Calendar Access and Management
+status: defining requirements
+stopped_at: milestone v1.1 initialized
+last_updated: "2026-04-03T12:00:00.000Z"
 last_activity: 2026-04-03
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 4
-  completed_plans: 4
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -20,17 +20,17 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-04-03)
 
-**Core value:** Users can manage contacts (create, update, delete) without leaving the terminal or AI assistant
-**Current focus:** Planning next milestone
+**Core value:** Users can manage Fastmail data without leaving the terminal or AI assistant, with automation-friendly APIs that stay faithful to Fastmail's actual protocol boundaries
+**Current focus:** Defining milestone v1.1 requirements for calendar access and management
 
 ## Current Position
 
-Phase: Complete
-Plan: Archived
-Status: v1.0 milestone complete
-Last activity: 2026-04-03
+Phase: Not started (defining requirements)
+Plan: -
+Status: Defining requirements
+Last activity: 2026-04-03 - Milestone v1.1 started
 
-Progress: [██████████] 100%
+Progress: [----------] 0%
 
 ## Performance Metrics
 
@@ -73,14 +73,16 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-None yet.
+- Translate confirmed calendar milestone scope into requirements and roadmap
+- Preserve live Fastmail validation in phase success criteria
 
 ### Blockers/Concerns
 
-- Live Fastmail validation is still recommended for final confidence in server-specific CardDAV behavior.
+- Fastmail calendars are exposed via CalDAV today, not JMAP, so this milestone needs a parallel protocol path.
+- Event recurrence, attendee scheduling, and reminder semantics add more edge cases than prior contact CRUD work.
 
 ## Session Continuity
 
-Last session: 2026-04-03T09:17:41.803Z
-Stopped at: v1.0 milestone completed and archived
-Resume file: .planning/MILESTONES.md
+Last session: 2026-04-03T12:00:00.000Z
+Stopped at: milestone v1.1 initialized
+Resume file: .planning/ROADMAP.md
