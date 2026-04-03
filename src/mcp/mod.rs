@@ -45,12 +45,16 @@ pub struct FastmailMcp {
 impl FastmailMcp {
     pub async fn new() -> anyhow::Result<Self> {
         let config = Config::load()?;
-        let token = config.get_token()?;
+        let jmap_client = match config.get_token() {
+            Ok(token) => {
+                let mut client = JmapClient::new(token);
+                client.authenticate().await?;
+                Some(Arc::new(Mutex::new(client)))
+            }
+            Err(_) => None,
+        };
 
-        let mut client = JmapClient::new(token);
-        client.authenticate().await?;
-
-        let schema = Arc::new(graphql::build_schema(Mutex::new(client)));
+        let schema = Arc::new(graphql::build_schema(jmap_client));
 
         Ok(Self {
             schema,
@@ -70,14 +74,14 @@ impl FastmailMcp {
 #[tool_router]
 impl FastmailMcp {
     #[tool(
-        description = "Returns the full GraphQL SDL (Schema Definition Language) for the Fastmail API. Call this first to discover available queries, mutations, types, and their arguments. The schema includes all email, mailbox, identity, masked email, contact, and attachment operations."
+        description = "Returns the full GraphQL SDL (Schema Definition Language) for the Fastmail API. Call this first to discover available queries, mutations, types, and their arguments. The schema includes email, mailbox, identity, masked email, contact, calendar, event, and attachment operations."
     )]
     async fn schema_sdl(&self) -> ToolResult {
         Self::text_result(self.schema.sdl())
     }
 
     #[tool(
-        description = "Execute a GraphQL query or mutation against the Fastmail API. Use `schema_sdl` first to discover the schema. Supports all email operations: listing mailboxes, reading/searching emails, sending/replying/forwarding (with preview/confirm pattern), managing masked emails, downloading attachments, and searching contacts. Pass variables as a JSON string."
+        description = "Execute a GraphQL query or mutation against the Fastmail API. Use `schema_sdl` first to discover the schema. Supports email, contact, calendar, and event operations, including preview/confirm delete guards for destructive calendar/event mutations. Pass variables as a JSON string."
     )]
     async fn graphql(&self, Parameters(req): Parameters<GraphqlRequest>) -> ToolResult {
         let mut request = async_graphql::Request::new(&req.query);
@@ -120,7 +124,7 @@ impl ServerHandler for FastmailMcp {
                 website_url: Some("https://github.com/radiosilence/fastmail-cli".to_string()),
             },
             instructions: Some(
-                "Fastmail MCP Server — GraphQL interface for email operations.\n\n\
+                "Fastmail MCP Server — GraphQL interface for mail, contacts, and calendars.\n\n\
                 ## Getting Started\n\
                 1. Call `schema_sdl` to get the full GraphQL schema\n\
                 2. Use `graphql` to execute queries and mutations\n\n\
@@ -134,17 +138,27 @@ impl ServerHandler for FastmailMcp {
                 { email(id: \"abc123\") { id subject from { email name } to { email name } textBody } }\n\n\
                 # Search emails\n\
                 { searchEmails(query: \"invoice\", after: \"2024-01-01\") { id subject from { email } receivedAt } }\n\
+\n\
+                # List calendars\n\
+                { calendars { id name color isDefault } }\n\
+\n\
+                # List this week's events\n\
+                { events(week: true) { id title calendarId start { value timezone allDay } end { value timezone allDay } } }\n\
                 ```\n\n\
-                ## Sending Emails (ALWAYS preview first!)\n\
+                ## Mutations With Safety Gates\n\
                 ```graphql\n\
-                # Step 1: Preview\n\
+                # Send email: Step 1 preview\n\
                 mutation { sendEmail(action: PREVIEW, to: \"recipient@example.com\", subject: \"Hello\", body: \"...\") { preview } }\n\n\
-                # Step 2: After user approval, confirm\n\
+                # Send email: Step 2 confirm after approval\n\
                 mutation { sendEmail(action: CONFIRM, to: \"recipient@example.com\", subject: \"Hello\", body: \"...\") { emailId } }\n\
+\n\
+                # Delete event: Step 1 preview\n\
+                mutation { deleteEvent(action: PREVIEW, id: \"event-uid\") { preview confirmationToken } }\n\
                 ```\n\n\
                 ## Safety Rules\n\
                 - NEVER send without showing preview first\n\
                 - NEVER confirm send without explicit user approval\n\
+                - NEVER confirm calendar or event deletion without preview + user approval\n\
                 - mark_as_spam affects future filtering — always preview first"
                     .to_string(),
             ),

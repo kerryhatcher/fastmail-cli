@@ -1167,6 +1167,7 @@ dependencies = [
  "anyhow",
  "async-graphql",
  "base64",
+ "chrono",
  "clap",
  "clap_complete",
  "dirs",

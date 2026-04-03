@@ -10,6 +10,19 @@ use super::types::*;
 
 pub struct MutationRoot;
 
+fn require_jmap_client<'a>(
+    ctx: &'a Context<'a>,
+) -> Result<std::sync::Arc<tokio::sync::Mutex<crate::jmap::JmapClient>>> {
+    ctx.data::<super::JmapContext>()?
+        .client
+        .clone()
+        .ok_or_else(|| {
+            async_graphql::Error::new(
+                "JMAP token not configured. Mail operations require FASTMAIL_API_TOKEN.",
+            )
+        })
+}
+
 #[Object]
 #[allow(clippy::too_many_arguments)]
 impl MutationRoot {
@@ -155,6 +168,276 @@ impl MutationRoot {
         }
     }
 
+    async fn create_calendar(
+        &self,
+        #[graphql(desc = "Calendar display name")] name: String,
+        #[graphql(desc = "Optional calendar color, e.g. #3a87ad")] color: Option<String>,
+    ) -> Result<GqlCalendarMutationResult> {
+        match commands::create_calendar_record(&name, color.as_deref()).await {
+            Ok(calendar) => Ok(GqlCalendarMutationResult {
+                success: true,
+                calendar: Some(calendar.into()),
+                message: Some("Calendar created".to_string()),
+                error: None,
+            }),
+            Err(error) => Ok(GqlCalendarMutationResult {
+                success: false,
+                calendar: None,
+                message: None,
+                error: Some(error.to_string()),
+            }),
+        }
+    }
+
+    async fn update_calendar(
+        &self,
+        #[graphql(desc = "Calendar ID")] id: String,
+        #[graphql(desc = "Updated display name")] name: Option<String>,
+        #[graphql(desc = "Updated calendar color")] color: Option<String>,
+    ) -> Result<GqlCalendarMutationResult> {
+        match commands::update_calendar_record(&id, name.as_deref(), color.as_deref()).await {
+            Ok(calendar) => Ok(GqlCalendarMutationResult {
+                success: true,
+                calendar: Some(calendar.into()),
+                message: Some(format!("Calendar {} updated", id)),
+                error: None,
+            }),
+            Err(error) => Ok(GqlCalendarMutationResult {
+                success: false,
+                calendar: None,
+                message: None,
+                error: Some(error.to_string()),
+            }),
+        }
+    }
+
+    async fn delete_calendar(
+        &self,
+        #[graphql(desc = "PREVIEW first, then CONFIRM with the token from preview")]
+        action: CalendarDeleteAction,
+        #[graphql(desc = "Calendar ID")] id: String,
+        #[graphql(desc = "Confirmation token returned by PREVIEW")] confirmation_token: Option<
+            String,
+        >,
+    ) -> Result<GqlCalendarDeleteResult> {
+        let token = super::types::confirmation_token(&[&id]);
+        if matches!(action, CalendarDeleteAction::Preview) {
+            return Ok(GqlCalendarDeleteResult {
+                success: true,
+                deleted_id: None,
+                preview: Some(format!(
+                    "Delete calendar {}. Re-run deleteCalendar with action=CONFIRM and the confirmation token to proceed.",
+                    id
+                )),
+                confirmation_token: Some(token),
+                message: None,
+                error: None,
+            });
+        }
+
+        if confirmation_token.as_deref() != Some(&token) {
+            return Ok(GqlCalendarDeleteResult {
+                success: false,
+                deleted_id: None,
+                preview: None,
+                confirmation_token: None,
+                message: None,
+                error: Some(
+                    "Missing or invalid confirmation_token. Use action=PREVIEW first.".to_string(),
+                ),
+            });
+        }
+
+        match commands::delete_calendar_record(&id).await {
+            Ok(()) => Ok(GqlCalendarDeleteResult {
+                success: true,
+                deleted_id: Some(id.clone()),
+                preview: None,
+                confirmation_token: None,
+                message: Some(format!("Calendar {} deleted", id)),
+                error: None,
+            }),
+            Err(error) => Ok(GqlCalendarDeleteResult {
+                success: false,
+                deleted_id: None,
+                preview: None,
+                confirmation_token: None,
+                message: None,
+                error: Some(error.to_string()),
+            }),
+        }
+    }
+
+    async fn create_event(
+        &self,
+        #[graphql(
+            desc = "Optional calendar ID; defaults to the account's primary/default calendar"
+        )]
+        calendar_id: Option<String>,
+        #[graphql(desc = "Event title")] title: String,
+        #[graphql(desc = "Start: YYYY-MM-DD, YYYY-MM-DDTHH:MM[:SS], or RFC3339")] start: String,
+        #[graphql(desc = "End: YYYY-MM-DD, YYYY-MM-DDTHH:MM[:SS], or RFC3339")] end: String,
+        #[graphql(desc = "Timezone for naive local datetimes")] timezone: Option<String>,
+        #[graphql(desc = "Location")] location: Option<String>,
+        #[graphql(desc = "Description")] description: Option<String>,
+        #[graphql(desc = "Attendees")] attendees: Option<Vec<GqlEventAttendeeInput>>,
+        #[graphql(desc = "Recurrence rule")] recurrence: Option<GqlEventRecurrenceInput>,
+        #[graphql(desc = "Reminders")] reminders: Option<Vec<GqlEventReminderInput>>,
+    ) -> Result<GqlEventMutationResult> {
+        match commands::create_event_record(commands::EventInput {
+            calendar_id,
+            title,
+            start,
+            end,
+            timezone,
+            location,
+            description,
+            attendees: attendees
+                .unwrap_or_default()
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            recurrence: recurrence.map(Into::into),
+            reminders: reminders
+                .unwrap_or_default()
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        })
+        .await
+        {
+            Ok(event) => Ok(GqlEventMutationResult {
+                success: true,
+                event: Some(event.into()),
+                message: Some("Event created".to_string()),
+                error: None,
+            }),
+            Err(error) => Ok(GqlEventMutationResult {
+                success: false,
+                event: None,
+                message: None,
+                error: Some(error.to_string()),
+            }),
+        }
+    }
+
+    async fn update_event(
+        &self,
+        #[graphql(desc = "Event UID")] id: String,
+        #[graphql(desc = "Optional calendar ID hint")] calendar_id: Option<String>,
+        #[graphql(desc = "Updated title")] title: Option<String>,
+        #[graphql(desc = "Updated start")] start: Option<String>,
+        #[graphql(desc = "Updated end")] end: Option<String>,
+        #[graphql(desc = "Updated timezone")] timezone: Option<String>,
+        #[graphql(desc = "Updated location. Pass an empty string to clear it.")] location: Option<
+            String,
+        >,
+        #[graphql(desc = "Updated description. Pass an empty string to clear it.")]
+        description: Option<String>,
+        #[graphql(desc = "Replace attendees with this set")] attendees: Option<
+            Vec<GqlEventAttendeeInput>,
+        >,
+        #[graphql(desc = "Replace recurrence with this rule")] recurrence: Option<
+            GqlEventRecurrenceInput,
+        >,
+        #[graphql(desc = "Clear recurrence entirely")] clear_recurrence: Option<bool>,
+        #[graphql(desc = "Replace reminders with this set")] reminders: Option<
+            Vec<GqlEventReminderInput>,
+        >,
+        #[graphql(desc = "Clear reminders entirely")] clear_reminders: Option<bool>,
+    ) -> Result<GqlEventMutationResult> {
+        match commands::update_event_record(
+            &id,
+            calendar_id.as_deref(),
+            commands::EventPatch {
+                title,
+                start,
+                end,
+                timezone,
+                location,
+                description,
+                attendees: attendees.map(|items| items.into_iter().map(Into::into).collect()),
+                recurrence: recurrence.map(Into::into),
+                clear_recurrence: clear_recurrence.unwrap_or(false),
+                reminders: reminders.map(|items| items.into_iter().map(Into::into).collect()),
+                clear_reminders: clear_reminders.unwrap_or(false),
+            },
+        )
+        .await
+        {
+            Ok(event) => Ok(GqlEventMutationResult {
+                success: true,
+                event: Some(event.into()),
+                message: Some(format!("Event {} updated", id)),
+                error: None,
+            }),
+            Err(error) => Ok(GqlEventMutationResult {
+                success: false,
+                event: None,
+                message: None,
+                error: Some(error.to_string()),
+            }),
+        }
+    }
+
+    async fn delete_event(
+        &self,
+        #[graphql(desc = "PREVIEW first, then CONFIRM with the token from preview")]
+        action: EventDeleteAction,
+        #[graphql(desc = "Event UID")] id: String,
+        #[graphql(desc = "Optional calendar ID hint")] calendar_id: Option<String>,
+        #[graphql(desc = "Confirmation token returned by PREVIEW")] confirmation_token: Option<
+            String,
+        >,
+    ) -> Result<GqlEventDeleteResult> {
+        let token = super::types::confirmation_token(&[&id, calendar_id.as_deref().unwrap_or("")]);
+        if matches!(action, EventDeleteAction::Preview) {
+            return Ok(GqlEventDeleteResult {
+                success: true,
+                deleted_id: None,
+                preview: Some(format!(
+                    "Delete event {}. Re-run deleteEvent with action=CONFIRM and the confirmation token to proceed.",
+                    id
+                )),
+                confirmation_token: Some(token),
+                message: None,
+                error: None,
+            });
+        }
+
+        if confirmation_token.as_deref() != Some(&token) {
+            return Ok(GqlEventDeleteResult {
+                success: false,
+                deleted_id: None,
+                preview: None,
+                confirmation_token: None,
+                message: None,
+                error: Some(
+                    "Missing or invalid confirmation_token. Use action=PREVIEW first.".to_string(),
+                ),
+            });
+        }
+
+        match commands::delete_event_record(&id, calendar_id.as_deref()).await {
+            Ok(()) => Ok(GqlEventDeleteResult {
+                success: true,
+                deleted_id: Some(id.clone()),
+                preview: None,
+                confirmation_token: None,
+                message: Some(format!("Event {} deleted", id)),
+                error: None,
+            }),
+            Err(error) => Ok(GqlEventDeleteResult {
+                success: false,
+                deleted_id: None,
+                preview: None,
+                confirmation_token: None,
+                message: None,
+                error: Some(error.to_string()),
+            }),
+        }
+    }
+
     /// Compose and send a new email. ALWAYS use action=PREVIEW first, show the user, then CONFIRM or DRAFT with the confirmation_token from the preview.
     async fn send_email(
         &self,
@@ -201,7 +484,7 @@ impl MutationRoot {
         }
 
         let draft = matches!(action, SendAction::Draft);
-        let client = ctx.data::<tokio::sync::Mutex<crate::jmap::JmapClient>>()?;
+        let client = require_jmap_client(ctx)?;
         let mut client = client.lock().await;
 
         match client
@@ -252,7 +535,7 @@ impl MutationRoot {
         confirmation_token: Option<String>,
     ) -> Result<GqlComposeResult> {
         let token = super::types::confirmation_token(&[&email_id, &body]);
-        let client = ctx.data::<tokio::sync::Mutex<crate::jmap::JmapClient>>()?;
+        let client = require_jmap_client(ctx)?;
         let mut client = client.lock().await;
 
         let original = client.get_email(&email_id).await?;
@@ -365,7 +648,7 @@ impl MutationRoot {
     ) -> Result<GqlComposeResult> {
         let body_str = body.as_deref().unwrap_or("");
         let token = super::types::confirmation_token(&[&email_id, &to, body_str]);
-        let client = ctx.data::<tokio::sync::Mutex<crate::jmap::JmapClient>>()?;
+        let client = require_jmap_client(ctx)?;
         let mut client = client.lock().await;
 
         let original = client.get_email(&email_id).await?;
@@ -468,7 +751,7 @@ impl MutationRoot {
         #[graphql(desc = "Target mailbox name (e.g., 'Archive', 'Trash') or role")]
         target_mailbox: String,
     ) -> Result<GqlStatus> {
-        let client = ctx.data::<tokio::sync::Mutex<crate::jmap::JmapClient>>()?;
+        let client = require_jmap_client(ctx)?;
         let mut client = client.lock().await;
 
         let email = client.get_email(&email_id).await?;
@@ -501,7 +784,7 @@ impl MutationRoot {
             bool,
         >,
     ) -> Result<GqlStatus> {
-        let client = ctx.data::<tokio::sync::Mutex<crate::jmap::JmapClient>>()?;
+        let client = require_jmap_client(ctx)?;
         let client = client.lock().await;
         let read = read.unwrap_or(true);
 
@@ -540,7 +823,7 @@ impl MutationRoot {
         #[graphql(desc = "The email ID")] email_id: String,
         #[graphql(desc = "PREVIEW first, then CONFIRM")] action: SpamAction,
     ) -> Result<GqlStatus> {
-        let client = ctx.data::<tokio::sync::Mutex<crate::jmap::JmapClient>>()?;
+        let client = require_jmap_client(ctx)?;
         let mut client = client.lock().await;
 
         let email = client.get_email(&email_id).await?;
@@ -588,7 +871,7 @@ impl MutationRoot {
         #[graphql(desc = "A note to remember what this is for")] description: Option<String>,
         #[graphql(desc = "Custom prefix for the email address")] prefix: Option<String>,
     ) -> Result<GqlMaskedEmail> {
-        let client = ctx.data::<tokio::sync::Mutex<crate::jmap::JmapClient>>()?;
+        let client = require_jmap_client(ctx)?;
         let client = client.lock().await;
         let masked = client
             .create_masked_email(
@@ -606,7 +889,7 @@ impl MutationRoot {
         ctx: &Context<'_>,
         #[graphql(desc = "The masked email ID")] id: String,
     ) -> Result<GqlStatus> {
-        let client = ctx.data::<tokio::sync::Mutex<crate::jmap::JmapClient>>()?;
+        let client = require_jmap_client(ctx)?;
         let client = client.lock().await;
         match client
             .update_masked_email(&id, Some("enabled"), None, None)
@@ -631,7 +914,7 @@ impl MutationRoot {
         ctx: &Context<'_>,
         #[graphql(desc = "The masked email ID")] id: String,
     ) -> Result<GqlStatus> {
-        let client = ctx.data::<tokio::sync::Mutex<crate::jmap::JmapClient>>()?;
+        let client = require_jmap_client(ctx)?;
         let client = client.lock().await;
         match client
             .update_masked_email(&id, Some("disabled"), None, None)
@@ -656,7 +939,7 @@ impl MutationRoot {
         ctx: &Context<'_>,
         #[graphql(desc = "The masked email ID")] id: String,
     ) -> Result<GqlStatus> {
-        let client = ctx.data::<tokio::sync::Mutex<crate::jmap::JmapClient>>()?;
+        let client = require_jmap_client(ctx)?;
         let client = client.lock().await;
         match client
             .update_masked_email(&id, Some("deleted"), None, None)

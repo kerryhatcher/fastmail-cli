@@ -1,3 +1,4 @@
+mod caldav;
 mod carddav;
 mod commands;
 mod config;
@@ -270,6 +271,14 @@ enum Commands {
     #[command(subcommand)]
     Contacts(ContactsCommands),
 
+    /// Manage calendars via CalDAV
+    #[command(subcommand)]
+    Calendars(CalendarsCommands),
+
+    /// Manage calendar events via CalDAV
+    #[command(subcommand)]
+    Events(EventsCommands),
+
     /// Run as MCP (Model Context Protocol) server for Claude integration
     Mcp,
 }
@@ -417,6 +426,223 @@ enum ContactsCommands {
     Delete {
         /// Contact ID
         contact_id: String,
+
+        /// Confirm deletion
+        #[arg(long)]
+        confirm: bool,
+
+        /// Alias for --confirm
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum CalendarsCommands {
+    /// List all calendars
+    List,
+
+    /// Create a new calendar
+    Create {
+        /// Calendar display name
+        #[arg(long)]
+        name: String,
+
+        /// Optional calendar color (e.g. #3a87ad)
+        #[arg(long)]
+        color: Option<String>,
+    },
+
+    /// Update an existing calendar
+    Update {
+        /// Calendar ID
+        calendar_id: String,
+
+        /// Updated calendar name
+        #[arg(long)]
+        name: Option<String>,
+
+        /// Updated calendar color
+        #[arg(long)]
+        color: Option<String>,
+    },
+
+    /// Delete an existing calendar
+    Delete {
+        /// Calendar ID
+        calendar_id: String,
+
+        /// Confirm deletion
+        #[arg(long)]
+        confirm: bool,
+
+        /// Alias for --confirm
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum EventsCommands {
+    /// List events. Defaults to future events for the rest of today; explicit range mode requires both --start and --end.
+    List {
+        /// Limit results to one calendar ID
+        #[arg(long)]
+        calendar: Option<String>,
+
+        /// List the current week instead of the default today range
+        #[arg(long)]
+        week: bool,
+
+        /// Explicit range start (YYYY-MM-DD or RFC3339). Requires --end.
+        #[arg(long)]
+        start: Option<String>,
+
+        /// Explicit range end (YYYY-MM-DD or RFC3339). Requires --start.
+        #[arg(long)]
+        end: Option<String>,
+    },
+
+    /// Fetch one event by ID
+    Get {
+        /// Event ID (UID)
+        event_id: String,
+
+        /// Optional calendar ID hint
+        #[arg(long)]
+        calendar: Option<String>,
+    },
+
+    /// Create a new event
+    Create {
+        /// Target calendar ID. Defaults to the discovered primary/default calendar.
+        #[arg(long)]
+        calendar: Option<String>,
+
+        /// Event title
+        #[arg(long)]
+        title: String,
+
+        /// Start date/time: YYYY-MM-DD, YYYY-MM-DDTHH:MM[:SS], or RFC3339
+        #[arg(long)]
+        start: String,
+
+        /// End date/time: YYYY-MM-DD, YYYY-MM-DDTHH:MM[:SS], or RFC3339
+        #[arg(long)]
+        end: String,
+
+        /// Timezone for naive local datetimes
+        #[arg(long)]
+        timezone: Option<String>,
+
+        /// Event location
+        #[arg(long)]
+        location: Option<String>,
+
+        /// Event description
+        #[arg(long)]
+        description: Option<String>,
+
+        /// Repeatable attendee email address
+        #[arg(long)]
+        attendee: Vec<String>,
+
+        /// RRULE frequency, e.g. DAILY, WEEKLY, MONTHLY
+        #[arg(long)]
+        recurrence_freq: Option<String>,
+
+        /// RRULE interval
+        #[arg(long)]
+        recurrence_interval: Option<u32>,
+
+        /// RRULE count
+        #[arg(long)]
+        recurrence_count: Option<u32>,
+
+        /// RRULE until (basic iCalendar value, e.g. 20260430T120000Z)
+        #[arg(long)]
+        recurrence_until: Option<String>,
+
+        /// RRULE BYDAY values, repeatable (e.g. --recurrence-by-day MO)
+        #[arg(long = "recurrence-by-day")]
+        recurrence_by_day: Vec<String>,
+
+        /// Reminder minutes before the event, repeatable
+        #[arg(long = "reminder-minutes")]
+        reminder_minutes: Vec<i32>,
+    },
+
+    /// Update an existing event
+    Update {
+        /// Event ID (UID)
+        event_id: String,
+
+        /// Optional calendar ID hint
+        #[arg(long)]
+        calendar: Option<String>,
+
+        #[arg(long)]
+        title: Option<String>,
+
+        #[arg(long)]
+        start: Option<String>,
+
+        #[arg(long)]
+        end: Option<String>,
+
+        #[arg(long)]
+        timezone: Option<String>,
+
+        #[arg(long)]
+        location: Option<String>,
+
+        #[arg(long)]
+        description: Option<String>,
+
+        /// Replace attendees with this set. Repeatable.
+        #[arg(long)]
+        attendee: Vec<String>,
+
+        /// Clear all attendees from the event. Conflicts with --attendee.
+        #[arg(long, conflicts_with = "attendee")]
+        clear_attendees: bool,
+
+        #[arg(long)]
+        recurrence_freq: Option<String>,
+
+        #[arg(long)]
+        recurrence_interval: Option<u32>,
+
+        #[arg(long)]
+        recurrence_count: Option<u32>,
+
+        #[arg(long)]
+        recurrence_until: Option<String>,
+
+        #[arg(long = "recurrence-by-day")]
+        recurrence_by_day: Vec<String>,
+
+        /// Remove recurrence entirely
+        #[arg(long)]
+        clear_recurrence: bool,
+
+        /// Replace reminders with this set. Repeatable.
+        #[arg(long = "reminder-minutes")]
+        reminder_minutes: Vec<i32>,
+
+        /// Remove reminders entirely
+        #[arg(long)]
+        clear_reminders: bool,
+    },
+
+    /// Delete an existing event
+    Delete {
+        /// Event ID (UID)
+        event_id: String,
+
+        /// Optional calendar ID hint
+        #[arg(long)]
+        calendar: Option<String>,
 
         /// Confirm deletion
         #[arg(long)]
@@ -696,11 +922,231 @@ async fn main() {
             }
         },
 
+        Commands::Calendars(cmd) => match cmd {
+            CalendarsCommands::List => commands::list_calendars().await,
+            CalendarsCommands::Create { name, color } => {
+                commands::create_calendar(&name, color.as_deref()).await
+            }
+            CalendarsCommands::Update {
+                calendar_id,
+                name,
+                color,
+            } => commands::update_calendar(&calendar_id, name.as_deref(), color.as_deref()).await,
+            CalendarsCommands::Delete {
+                calendar_id,
+                confirm,
+                yes,
+            } => {
+                if !(confirm || yes) {
+                    eprintln!(
+                        "Delete calendar {}? Re-run with --confirm or --yes to proceed.",
+                        calendar_id
+                    );
+                    std::process::exit(1);
+                }
+                commands::delete_calendar(&calendar_id).await
+            }
+        },
+
+        Commands::Events(cmd) => match cmd {
+            EventsCommands::List {
+                calendar,
+                week,
+                start,
+                end,
+            } => {
+                commands::list_events(calendar.as_deref(), start.as_deref(), end.as_deref(), week)
+                    .await
+            }
+            EventsCommands::Get { event_id, calendar } => {
+                commands::get_event(&event_id, calendar.as_deref()).await
+            }
+            EventsCommands::Create {
+                calendar,
+                title,
+                start,
+                end,
+                timezone,
+                location,
+                description,
+                attendee,
+                recurrence_freq,
+                recurrence_interval,
+                recurrence_count,
+                recurrence_until,
+                recurrence_by_day,
+                reminder_minutes,
+            } => {
+                let recurrence = recurrence_freq.map(|frequency| crate::caldav::EventRecurrence {
+                    frequency,
+                    interval: recurrence_interval,
+                    count: recurrence_count,
+                    until: recurrence_until,
+                    by_day: recurrence_by_day,
+                });
+                let reminders = reminder_minutes
+                    .into_iter()
+                    .map(|minutes_before| crate::caldav::EventReminder {
+                        minutes_before,
+                        action: Some("DISPLAY".to_string()),
+                    })
+                    .collect();
+                let attendees = attendee
+                    .into_iter()
+                    .map(|email| crate::caldav::EventAttendee {
+                        email,
+                        ..Default::default()
+                    })
+                    .collect();
+
+                commands::create_event(commands::EventInput {
+                    calendar_id: calendar,
+                    title,
+                    start,
+                    end,
+                    timezone,
+                    location,
+                    description,
+                    attendees,
+                    recurrence,
+                    reminders,
+                })
+                .await
+            }
+            EventsCommands::Update {
+                event_id,
+                calendar,
+                title,
+                start,
+                end,
+                timezone,
+                location,
+                description,
+                attendee,
+                clear_attendees,
+                recurrence_freq,
+                recurrence_interval,
+                recurrence_count,
+                recurrence_until,
+                recurrence_by_day,
+                clear_recurrence,
+                reminder_minutes,
+                clear_reminders,
+            } => {
+                let recurrence = recurrence_freq.map(|frequency| crate::caldav::EventRecurrence {
+                    frequency,
+                    interval: recurrence_interval,
+                    count: recurrence_count,
+                    until: recurrence_until,
+                    by_day: recurrence_by_day,
+                });
+                let reminders = (!reminder_minutes.is_empty()).then(|| {
+                    reminder_minutes
+                        .into_iter()
+                        .map(|minutes_before| crate::caldav::EventReminder {
+                            minutes_before,
+                            action: Some("DISPLAY".to_string()),
+                        })
+                        .collect()
+                });
+                let attendees = if clear_attendees {
+                    Some(Vec::new())
+                } else {
+                    (!attendee.is_empty()).then(|| {
+                        attendee
+                            .into_iter()
+                            .map(|email| crate::caldav::EventAttendee {
+                                email,
+                                ..Default::default()
+                            })
+                            .collect()
+                    })
+                };
+                commands::update_event(
+                    &event_id,
+                    calendar.as_deref(),
+                    commands::EventPatch {
+                        title,
+                        start,
+                        end,
+                        timezone,
+                        location,
+                        description,
+                        attendees,
+                        recurrence,
+                        clear_recurrence,
+                        reminders,
+                        clear_reminders,
+                    },
+                )
+                .await
+            }
+            EventsCommands::Delete {
+                event_id,
+                calendar,
+                confirm,
+                yes,
+            } => {
+                if !(confirm || yes) {
+                    eprintln!(
+                        "Delete event {}? Re-run with --confirm or --yes to proceed.",
+                        event_id
+                    );
+                    std::process::exit(1);
+                }
+                commands::delete_event(&event_id, calendar.as_deref()).await
+            }
+        },
+
         Commands::Mcp => mcp::run_server().await,
     };
 
     if let Err(e) = result {
         Output::<()>::error(e.to_string()).print();
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cli_accepts_clear_attendees_flag_for_event_updates() {
+        let cli = Cli::try_parse_from([
+            "fastmail-cli",
+            "events",
+            "update",
+            "evt-1",
+            "--clear-attendees",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Commands::Events(EventsCommands::Update {
+                clear_attendees, ..
+            }) => {
+                assert!(clear_attendees);
+            }
+            _ => panic!("expected events update command"),
+        }
+    }
+
+    #[test]
+    fn cli_rejects_clear_attendees_with_attendee_values() {
+        let result = Cli::try_parse_from([
+            "fastmail-cli",
+            "events",
+            "update",
+            "evt-1",
+            "--attendee",
+            "person@example.com",
+            "--clear-attendees",
+        ]);
+
+        match result {
+            Ok(_) => panic!("expected argument conflict"),
+            Err(error) => assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict),
+        }
     }
 }

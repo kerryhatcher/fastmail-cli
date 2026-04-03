@@ -1,9 +1,25 @@
 //! GraphQL type wrappers around existing model structs
 
-use async_graphql::{Context, Enum, Object, Result, SimpleObject};
+use async_graphql::{Context, Enum, InputObject, Object, Result, SimpleObject};
 
+use crate::caldav::{
+    Calendar, CalendarEvent, EventAttendee, EventDateTime, EventRecurrence, EventReminder,
+};
 use crate::carddav::{Contact, ContactEmail, ContactPhone};
 use crate::models::{Email, EmailAddress, Identity, Mailbox, MaskedEmail};
+
+fn require_jmap_client<'a>(
+    ctx: &'a Context<'a>,
+) -> Result<std::sync::Arc<tokio::sync::Mutex<crate::jmap::JmapClient>>> {
+    ctx.data::<super::JmapContext>()?
+        .client
+        .clone()
+        .ok_or_else(|| {
+            async_graphql::Error::new(
+                "JMAP token not configured. Mail operations require FASTMAIL_API_TOKEN.",
+            )
+        })
+}
 
 // ============ Output Types ============
 
@@ -247,7 +263,7 @@ impl GqlAttachment {
     /// Fetch the actual attachment content. Images are resized and base64-encoded,
     /// documents have text extracted. Only fetched when this field is included in the query.
     async fn content(&self, ctx: &Context<'_>) -> Result<GqlAttachmentContent> {
-        let client = ctx.data::<tokio::sync::Mutex<crate::jmap::JmapClient>>()?;
+        let client = require_jmap_client(ctx)?;
         let client = client.lock().await;
 
         let content_type = self
@@ -447,6 +463,210 @@ impl From<Contact> for GqlContact {
     }
 }
 
+#[derive(SimpleObject)]
+#[graphql(name = "Calendar")]
+pub struct GqlCalendar {
+    pub id: String,
+    pub name: String,
+    pub color: Option<String>,
+    pub description: Option<String>,
+    pub href: String,
+    pub etag: Option<String>,
+    pub ctag: Option<String>,
+    pub is_default: bool,
+}
+
+impl From<Calendar> for GqlCalendar {
+    fn from(calendar: Calendar) -> Self {
+        Self {
+            id: calendar.id,
+            name: calendar.name,
+            color: calendar.color,
+            description: calendar.description,
+            href: calendar.href,
+            etag: calendar.etag,
+            ctag: calendar.ctag,
+            is_default: calendar.is_default,
+        }
+    }
+}
+
+#[derive(SimpleObject, Clone)]
+#[graphql(name = "EventDateTime")]
+pub struct GqlEventDateTime {
+    pub value: String,
+    pub timezone: Option<String>,
+    pub all_day: bool,
+}
+
+impl From<EventDateTime> for GqlEventDateTime {
+    fn from(value: EventDateTime) -> Self {
+        Self {
+            value: value.value,
+            timezone: value.timezone,
+            all_day: value.all_day,
+        }
+    }
+}
+
+#[derive(SimpleObject, Clone)]
+#[graphql(name = "EventAttendee")]
+pub struct GqlEventAttendee {
+    pub email: String,
+    pub name: Option<String>,
+    pub role: Option<String>,
+    pub partstat: Option<String>,
+    pub rsvp: Option<bool>,
+}
+
+impl From<EventAttendee> for GqlEventAttendee {
+    fn from(attendee: EventAttendee) -> Self {
+        Self {
+            email: attendee.email,
+            name: attendee.name,
+            role: attendee.role,
+            partstat: attendee.partstat,
+            rsvp: attendee.rsvp,
+        }
+    }
+}
+
+#[derive(SimpleObject, Clone)]
+#[graphql(name = "EventRecurrence")]
+pub struct GqlEventRecurrence {
+    pub frequency: String,
+    pub interval: Option<u32>,
+    pub count: Option<u32>,
+    pub until: Option<String>,
+    pub by_day: Vec<String>,
+}
+
+impl From<EventRecurrence> for GqlEventRecurrence {
+    fn from(recurrence: EventRecurrence) -> Self {
+        Self {
+            frequency: recurrence.frequency,
+            interval: recurrence.interval,
+            count: recurrence.count,
+            until: recurrence.until,
+            by_day: recurrence.by_day,
+        }
+    }
+}
+
+#[derive(SimpleObject, Clone)]
+#[graphql(name = "EventReminder")]
+pub struct GqlEventReminder {
+    pub minutes_before: i32,
+    pub action: Option<String>,
+}
+
+impl From<EventReminder> for GqlEventReminder {
+    fn from(reminder: EventReminder) -> Self {
+        Self {
+            minutes_before: reminder.minutes_before,
+            action: reminder.action,
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+#[graphql(name = "CalendarEvent")]
+pub struct GqlCalendarEvent {
+    pub id: String,
+    pub calendar_id: String,
+    pub calendar_name: Option<String>,
+    pub href: Option<String>,
+    pub etag: Option<String>,
+    pub title: String,
+    pub start: GqlEventDateTime,
+    pub end: GqlEventDateTime,
+    pub location: Option<String>,
+    pub description: Option<String>,
+    pub attendees: Vec<GqlEventAttendee>,
+    pub recurrence: Option<GqlEventRecurrence>,
+    pub reminders: Vec<GqlEventReminder>,
+}
+
+impl From<CalendarEvent> for GqlCalendarEvent {
+    fn from(event: CalendarEvent) -> Self {
+        Self {
+            id: event.id,
+            calendar_id: event.calendar_id,
+            calendar_name: event.calendar_name,
+            href: event.href,
+            etag: event.etag,
+            title: event.title,
+            start: event.start.into(),
+            end: event.end.into(),
+            location: event.location,
+            description: event.description,
+            attendees: event.attendees.into_iter().map(Into::into).collect(),
+            recurrence: event.recurrence.map(Into::into),
+            reminders: event.reminders.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+#[derive(InputObject, Clone)]
+#[graphql(name = "EventAttendeeInput")]
+pub struct GqlEventAttendeeInput {
+    pub email: String,
+    pub name: Option<String>,
+    pub role: Option<String>,
+    pub partstat: Option<String>,
+    pub rsvp: Option<bool>,
+}
+
+impl From<GqlEventAttendeeInput> for EventAttendee {
+    fn from(attendee: GqlEventAttendeeInput) -> Self {
+        Self {
+            email: attendee.email,
+            name: attendee.name,
+            role: attendee.role,
+            partstat: attendee.partstat,
+            rsvp: attendee.rsvp,
+        }
+    }
+}
+
+#[derive(InputObject, Clone)]
+#[graphql(name = "EventRecurrenceInput")]
+pub struct GqlEventRecurrenceInput {
+    pub frequency: String,
+    pub interval: Option<u32>,
+    pub count: Option<u32>,
+    pub until: Option<String>,
+    pub by_day: Option<Vec<String>>,
+}
+
+impl From<GqlEventRecurrenceInput> for EventRecurrence {
+    fn from(recurrence: GqlEventRecurrenceInput) -> Self {
+        Self {
+            frequency: recurrence.frequency,
+            interval: recurrence.interval,
+            count: recurrence.count,
+            until: recurrence.until,
+            by_day: recurrence.by_day.unwrap_or_default(),
+        }
+    }
+}
+
+#[derive(InputObject, Clone)]
+#[graphql(name = "EventReminderInput")]
+pub struct GqlEventReminderInput {
+    pub minutes_before: i32,
+    pub action: Option<String>,
+}
+
+impl From<GqlEventReminderInput> for EventReminder {
+    fn from(reminder: GqlEventReminderInput) -> Self {
+        Self {
+            minutes_before: reminder.minutes_before,
+            action: reminder.action,
+        }
+    }
+}
+
 // ============ Enums ============
 
 #[derive(Enum, Copy, Clone, Eq, PartialEq)]
@@ -472,6 +692,18 @@ pub enum ContactDeleteAction {
     /// Preview the deletion and receive a confirmation token
     Preview,
     /// Confirm the deletion with a valid confirmation token
+    Confirm,
+}
+
+#[derive(Enum, Copy, Clone, Eq, PartialEq)]
+pub enum CalendarDeleteAction {
+    Preview,
+    Confirm,
+}
+
+#[derive(Enum, Copy, Clone, Eq, PartialEq)]
+pub enum EventDeleteAction {
+    Preview,
     Confirm,
 }
 
@@ -522,6 +754,46 @@ pub struct GqlContactMutationResult {
 #[derive(SimpleObject)]
 #[graphql(name = "ContactDeleteResult")]
 pub struct GqlContactDeleteResult {
+    pub success: bool,
+    pub deleted_id: Option<String>,
+    pub preview: Option<String>,
+    pub confirmation_token: Option<String>,
+    pub message: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(SimpleObject)]
+#[graphql(name = "CalendarMutationResult")]
+pub struct GqlCalendarMutationResult {
+    pub success: bool,
+    pub calendar: Option<GqlCalendar>,
+    pub message: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(SimpleObject)]
+#[graphql(name = "CalendarDeleteResult")]
+pub struct GqlCalendarDeleteResult {
+    pub success: bool,
+    pub deleted_id: Option<String>,
+    pub preview: Option<String>,
+    pub confirmation_token: Option<String>,
+    pub message: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(SimpleObject)]
+#[graphql(name = "EventMutationResult")]
+pub struct GqlEventMutationResult {
+    pub success: bool,
+    pub event: Option<GqlCalendarEvent>,
+    pub message: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(SimpleObject)]
+#[graphql(name = "EventDeleteResult")]
+pub struct GqlEventDeleteResult {
     pub success: bool,
     pub deleted_id: Option<String>,
     pub preview: Option<String>,

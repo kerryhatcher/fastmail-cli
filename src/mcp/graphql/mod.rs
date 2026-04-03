@@ -4,6 +4,7 @@
 //! replacing the previous 18 individual MCP tools with a composable query interface.
 
 use async_graphql::Schema;
+use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::jmap::JmapClient;
@@ -17,9 +18,13 @@ use query::QueryRoot;
 
 pub type FastmailSchema = Schema<QueryRoot, MutationRoot, async_graphql::EmptySubscription>;
 
-/// Build the GraphQL schema with the JMAP client injected as context data.
-pub fn build_schema(client: Mutex<JmapClient>) -> FastmailSchema {
+pub struct JmapContext {
+    pub client: Option<Arc<Mutex<JmapClient>>>,
+}
+
+/// Build the GraphQL schema with optional JMAP client context data.
+pub fn build_schema(client: Option<Arc<Mutex<JmapClient>>>) -> FastmailSchema {
     Schema::build(QueryRoot, MutationRoot, async_graphql::EmptySubscription)
-        .data(client)
+        .data(JmapContext { client })
         .finish()
 }

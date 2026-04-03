@@ -40,6 +40,26 @@ pub enum Error {
         server_etag: Option<String>,
     },
 
+    #[error("Calendar not found: {0}")]
+    CalendarNotFound(String),
+
+    #[error("Calendar conflict for '{id}': sent ETag '{sent_etag}', server has '{server_etag:?}'")]
+    CalendarConflict {
+        id: String,
+        sent_etag: String,
+        server_etag: Option<String>,
+    },
+
+    #[error("Event not found: {0}")]
+    EventNotFound(String),
+
+    #[error("Event conflict for '{id}': sent ETag '{sent_etag}', server has '{server_etag:?}'")]
+    EventConflict {
+        id: String,
+        sent_etag: String,
+        server_etag: Option<String>,
+    },
+
     #[error("Identity not found for sending")]
     IdentityNotFound,
 
