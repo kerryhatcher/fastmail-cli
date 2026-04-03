@@ -467,6 +467,14 @@ pub enum SpamAction {
     Confirm,
 }
 
+#[derive(Enum, Copy, Clone, Eq, PartialEq)]
+pub enum ContactDeleteAction {
+    /// Preview the deletion and receive a confirmation token
+    Preview,
+    /// Confirm the deletion with a valid confirmation token
+    Confirm,
+}
+
 // ============ Result Types ============
 
 #[derive(SimpleObject)]
@@ -498,6 +506,26 @@ pub fn confirmation_token(parts: &[&str]) -> String {
 #[graphql(name = "Status")]
 pub struct GqlStatus {
     pub success: bool,
+    pub message: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(SimpleObject)]
+#[graphql(name = "ContactMutationResult")]
+pub struct GqlContactMutationResult {
+    pub success: bool,
+    pub contact: Option<GqlContact>,
+    pub message: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(SimpleObject)]
+#[graphql(name = "ContactDeleteResult")]
+pub struct GqlContactDeleteResult {
+    pub success: bool,
+    pub deleted_id: Option<String>,
+    pub preview: Option<String>,
+    pub confirmation_token: Option<String>,
     pub message: Option<String>,
     pub error: Option<String>,
 }

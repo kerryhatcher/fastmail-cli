@@ -2,7 +2,10 @@
 //!
 //! Uses raw HTTP with reqwest since CardDAV is just WebDAV with vCard.
 
-use reqwest::Client;
+use reqwest::{
+    Client,
+    header::{ETAG, HeaderMap, IF_MATCH, IF_NONE_MATCH, LOCATION},
+};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, instrument};
 // Uuid is imported for use by callers (Phase 3: create_contact will call Uuid::new_v4())
@@ -14,7 +17,7 @@ use crate::error::{Error, Result};
 const CARDDAV_BASE: &str = "https://carddav.fastmail.com";
 
 /// A contact parsed from vCard
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Contact {
     /// Unique ID (from UID property)
     pub id: String,
@@ -40,13 +43,13 @@ pub struct Contact {
     pub etag: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ContactEmail {
     pub email: String,
     pub label: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ContactPhone {
     pub number: String,
     pub label: Option<String>,
@@ -57,6 +60,12 @@ pub struct ContactPhone {
 pub struct AddressBook {
     pub href: String,
     pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ContactCreateResult {
+    pub href: String,
+    pub etag: Option<String>,
 }
 
 /// CardDAV client
@@ -265,6 +274,188 @@ impl CardDavClient {
             .collect();
 
         Ok(filtered)
+    }
+
+    /// Find a contact by exact ID across all address books.
+    #[instrument(skip(self))]
+    pub async fn get_contact_by_id(&self, contact_id: &str) -> Result<Contact> {
+        let addressbooks = self.list_addressbooks().await?;
+
+        for addressbook in addressbooks {
+            let contacts = self.list_contacts(&addressbook.href).await?;
+            if let Some(contact) = contacts
+                .into_iter()
+                .find(|contact| contact.id == contact_id)
+            {
+                return Ok(contact);
+            }
+        }
+
+        Err(Error::ContactNotFound(contact_id.to_string()))
+    }
+
+    /// Return the first discovered address book href for create operations.
+    #[instrument(skip(self))]
+    pub async fn default_addressbook_href(&self) -> Result<String> {
+        let addressbooks = self.list_addressbooks().await?;
+        addressbooks
+            .into_iter()
+            .next()
+            .map(|addressbook| addressbook.href)
+            .ok_or_else(|| Error::Server("No CardDAV address books found".to_string()))
+    }
+
+    #[instrument(skip(self, contact))]
+    pub async fn create_contact(
+        &self,
+        addressbook_href: &str,
+        contact: &Contact,
+    ) -> Result<ContactCreateResult> {
+        let href = build_contact_href(addressbook_href, &contact.id);
+        let url = format!("{}{}", CARDDAV_BASE, href);
+        let vcard = serialize_vcard(contact);
+
+        let response = self
+            .client
+            .put(&url)
+            .basic_auth(&self.username, Some(&self.app_password))
+            .header("Content-Type", "text/vcard; charset=utf-8")
+            .header(IF_NONE_MATCH, "*")
+            .body(vcard)
+            .send()
+            .await?;
+
+        let status = response.status();
+        let headers = response.headers().clone();
+        let body = response.text().await?;
+
+        debug!(status = %status, href = %href, "PUT create_contact response");
+
+        let etag = map_write_response(contact, None, status, &headers, &body)?;
+        let created_href = extract_location_path(&headers).unwrap_or(href);
+
+        Ok(ContactCreateResult {
+            href: created_href,
+            etag,
+        })
+    }
+
+    #[instrument(skip(self, contact))]
+    pub async fn update_contact(
+        &self,
+        href: &str,
+        etag: &str,
+        contact: &Contact,
+    ) -> Result<String> {
+        let url = format!("{}{}", CARDDAV_BASE, href);
+        let vcard = serialize_vcard(contact);
+
+        let response = self
+            .client
+            .put(&url)
+            .basic_auth(&self.username, Some(&self.app_password))
+            .header("Content-Type", "text/vcard; charset=utf-8")
+            .header(IF_MATCH, etag)
+            .body(vcard)
+            .send()
+            .await?;
+
+        let status = response.status();
+        let headers = response.headers().clone();
+        let body = response.text().await?;
+
+        debug!(status = %status, href = %href, "PUT update_contact response");
+
+        let new_etag = map_write_response(contact, Some(etag), status, &headers, &body)?
+            .or_else(|| contact.etag.clone())
+            .unwrap_or_else(|| etag.to_string());
+        Ok(new_etag)
+    }
+
+    #[instrument(skip(self))]
+    pub async fn delete_contact(&self, href: &str, etag: &str, contact_id: &str) -> Result<()> {
+        let url = format!("{}{}", CARDDAV_BASE, href);
+
+        let response = self
+            .client
+            .delete(&url)
+            .basic_auth(&self.username, Some(&self.app_password))
+            .header(IF_MATCH, etag)
+            .send()
+            .await?;
+
+        let status = response.status();
+        let headers = response.headers().clone();
+        let body = response.text().await?;
+
+        let contact = Contact {
+            id: contact_id.to_string(),
+            name: String::new(),
+            emails: Vec::new(),
+            phones: Vec::new(),
+            organization: None,
+            title: None,
+            notes: None,
+            address: None,
+            href: Some(href.to_string()),
+            etag: Some(etag.to_string()),
+        };
+
+        debug!(status = %status, href = %href, "DELETE delete_contact response");
+
+        map_write_response(&contact, Some(etag), status, &headers, &body)?;
+        Ok(())
+    }
+}
+
+fn build_contact_href(addressbook_href: &str, contact_id: &str) -> String {
+    let trimmed = addressbook_href.trim_end_matches('/');
+    format!("{trimmed}/{contact_id}.vcf")
+}
+
+fn header_value(headers: &HeaderMap, name: reqwest::header::HeaderName) -> Option<String> {
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .map(ToString::to_string)
+}
+
+fn extract_location_path(headers: &HeaderMap) -> Option<String> {
+    let location = header_value(headers, LOCATION)?;
+    if let Some(stripped) = location.strip_prefix(CARDDAV_BASE) {
+        return Some(stripped.to_string());
+    }
+    if location.starts_with('/') {
+        return Some(location);
+    }
+    None
+}
+
+fn map_write_response(
+    contact: &Contact,
+    sent_etag: Option<&str>,
+    status: reqwest::StatusCode,
+    headers: &HeaderMap,
+    body: &str,
+) -> Result<Option<String>> {
+    if matches!(
+        status,
+        reqwest::StatusCode::CREATED | reqwest::StatusCode::NO_CONTENT | reqwest::StatusCode::OK
+    ) {
+        return Ok(header_value(headers, ETAG));
+    }
+
+    match status {
+        reqwest::StatusCode::PRECONDITION_FAILED => Err(Error::ContactConflict {
+            id: contact.id.clone(),
+            sent_etag: sent_etag.unwrap_or_default().to_string(),
+            server_etag: header_value(headers, ETAG),
+        }),
+        reqwest::StatusCode::NOT_FOUND => Err(Error::ContactNotFound(contact.id.clone())),
+        _ => Err(Error::Server(format!(
+            "CardDAV write failed for {}: {} - {}",
+            contact.id, status, body
+        ))),
     }
 }
 
@@ -597,6 +788,7 @@ fn hash_id(s: &str) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use reqwest::{StatusCode, header::HeaderValue};
 
     #[test]
     fn test_unfold_vcard_lines() {
@@ -716,7 +908,8 @@ mod tests {
 
     #[test]
     fn test_parse_vcard_address_adr() {
-        let vcard = "BEGIN:VCARD\nVERSION:3.0\nUID:abc\nFN:Alice\nADR:;;123 Main St;;;;;\nEND:VCARD";
+        let vcard =
+            "BEGIN:VCARD\nVERSION:3.0\nUID:abc\nFN:Alice\nADR:;;123 Main St;;;;;\nEND:VCARD";
         let contact = parse_vcard(vcard, None, None).unwrap();
         assert_eq!(contact.address, Some("123 Main St".to_string()));
     }
@@ -825,7 +1018,11 @@ END:VCARD</card:address-data>
         assert!(result.ends_with("\r\n"));
         // Reconstruct: strip CRLF from each line, strip leading space from continuations
         let mut unfolded = String::new();
-        for (i, physical) in result.split("\r\n").filter(|s: &&str| !s.is_empty()).enumerate() {
+        for (i, physical) in result
+            .split("\r\n")
+            .filter(|s: &&str| !s.is_empty())
+            .enumerate()
+        {
             if i == 0 {
                 unfolded.push_str(physical);
             } else {
@@ -867,6 +1064,95 @@ END:VCARD</card:address-data>
             address: None,
             href: None,
             etag: None,
+        }
+    }
+
+    #[test]
+    fn test_build_contact_href_appends_vcf() {
+        assert_eq!(
+            build_contact_href("/dav/addressbooks/user/test/Default/", "abc-123"),
+            "/dav/addressbooks/user/test/Default/abc-123.vcf"
+        );
+    }
+
+    #[test]
+    fn test_extract_location_path_handles_absolute_and_relative_urls() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            LOCATION,
+            HeaderValue::from_static(
+                "https://carddav.fastmail.com/dav/addressbooks/user/test/Default/abc.vcf",
+            ),
+        );
+        assert_eq!(
+            extract_location_path(&headers).as_deref(),
+            Some("/dav/addressbooks/user/test/Default/abc.vcf")
+        );
+
+        headers.insert(
+            LOCATION,
+            HeaderValue::from_static("/dav/addressbooks/user/test/Default/xyz.vcf"),
+        );
+        assert_eq!(
+            extract_location_path(&headers).as_deref(),
+            Some("/dav/addressbooks/user/test/Default/xyz.vcf")
+        );
+    }
+
+    #[test]
+    fn test_map_write_response_success_extracts_etag() {
+        let contact = make_basic_contact();
+        let mut headers = HeaderMap::new();
+        headers.insert(ETAG, HeaderValue::from_static("\"etag-123\""));
+
+        let etag = map_write_response(&contact, None, StatusCode::CREATED, &headers, "").unwrap();
+        assert_eq!(etag.as_deref(), Some("\"etag-123\""));
+    }
+
+    #[test]
+    fn test_map_write_response_conflict_uses_server_etag() {
+        let contact = make_basic_contact();
+        let mut headers = HeaderMap::new();
+        headers.insert(ETAG, HeaderValue::from_static("\"etag-server\""));
+
+        let error = map_write_response(
+            &contact,
+            Some("\"etag-old\""),
+            StatusCode::PRECONDITION_FAILED,
+            &headers,
+            "",
+        )
+        .unwrap_err();
+
+        match error {
+            Error::ContactConflict {
+                id,
+                sent_etag,
+                server_etag,
+            } => {
+                assert_eq!(id, contact.id);
+                assert_eq!(sent_etag, "\"etag-old\"");
+                assert_eq!(server_etag.as_deref(), Some("\"etag-server\""));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_map_write_response_not_found() {
+        let contact = make_basic_contact();
+        let error = map_write_response(
+            &contact,
+            Some("\"etag-old\""),
+            StatusCode::NOT_FOUND,
+            &HeaderMap::new(),
+            "",
+        )
+        .unwrap_err();
+
+        match error {
+            Error::ContactNotFound(id) => assert_eq!(id, contact.id),
+            other => panic!("unexpected error: {other:?}"),
         }
     }
 

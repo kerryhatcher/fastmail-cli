@@ -347,6 +347,85 @@ enum ContactsCommands {
         /// Search query
         query: String,
     },
+
+    /// Create a new contact
+    Create {
+        /// Full name
+        #[arg(long)]
+        name: String,
+
+        /// Email address
+        #[arg(long)]
+        email: Option<String>,
+
+        /// Phone number
+        #[arg(long)]
+        phone: Option<String>,
+
+        /// Organization / company
+        #[arg(long)]
+        organization: Option<String>,
+
+        /// Job title
+        #[arg(long)]
+        title: Option<String>,
+
+        /// Street address
+        #[arg(long)]
+        address: Option<String>,
+
+        /// Notes
+        #[arg(long)]
+        notes: Option<String>,
+    },
+
+    /// Update an existing contact
+    Update {
+        /// Contact ID
+        contact_id: String,
+
+        /// Full name
+        #[arg(long)]
+        name: Option<String>,
+
+        /// Email address
+        #[arg(long)]
+        email: Option<String>,
+
+        /// Phone number
+        #[arg(long)]
+        phone: Option<String>,
+
+        /// Organization / company
+        #[arg(long)]
+        organization: Option<String>,
+
+        /// Job title
+        #[arg(long)]
+        title: Option<String>,
+
+        /// Street address
+        #[arg(long)]
+        address: Option<String>,
+
+        /// Notes
+        #[arg(long)]
+        notes: Option<String>,
+    },
+
+    /// Delete an existing contact
+    Delete {
+        /// Contact ID
+        contact_id: String,
+
+        /// Confirm deletion
+        #[arg(long)]
+        confirm: bool,
+
+        /// Alias for --confirm
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
 }
 
 #[tokio::main]
@@ -557,6 +636,64 @@ async fn main() {
         Commands::Contacts(cmd) => match cmd {
             ContactsCommands::List => commands::list_contacts().await,
             ContactsCommands::Search { query } => commands::search_contacts(&query).await,
+            ContactsCommands::Create {
+                name,
+                email,
+                phone,
+                organization,
+                title,
+                address,
+                notes,
+            } => {
+                commands::create_contact(commands::ContactInput {
+                    name,
+                    email,
+                    phone,
+                    organization,
+                    title,
+                    address,
+                    notes,
+                })
+                .await
+            }
+            ContactsCommands::Update {
+                contact_id,
+                name,
+                email,
+                phone,
+                organization,
+                title,
+                address,
+                notes,
+            } => {
+                commands::update_contact(
+                    &contact_id,
+                    commands::ContactPatch {
+                        name,
+                        email,
+                        phone,
+                        organization,
+                        title,
+                        address,
+                        notes,
+                    },
+                )
+                .await
+            }
+            ContactsCommands::Delete {
+                contact_id,
+                confirm,
+                yes,
+            } => {
+                if !(confirm || yes) {
+                    eprintln!(
+                        "Delete contact {}? Re-run with --confirm or --yes to proceed.",
+                        contact_id
+                    );
+                    std::process::exit(1);
+                }
+                commands::delete_contact(&contact_id).await
+            }
         },
 
         Commands::Mcp => mcp::run_server().await,

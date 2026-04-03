@@ -4,6 +4,7 @@ use async_graphql::{Context, Object, Result};
 
 use crate::models::EmailAddress;
 use crate::util::parse_addresses;
+use crate::{commands, error::Error};
 
 use super::types::*;
 
@@ -12,6 +13,148 @@ pub struct MutationRoot;
 #[Object]
 #[allow(clippy::too_many_arguments)]
 impl MutationRoot {
+    async fn create_contact(
+        &self,
+        #[graphql(desc = "Full name")] name: String,
+        #[graphql(desc = "Primary email address")] email: Option<String>,
+        #[graphql(desc = "Primary phone number")] phone: Option<String>,
+        #[graphql(desc = "Organization / company")] organization: Option<String>,
+        #[graphql(desc = "Job title")] title: Option<String>,
+        #[graphql(desc = "Street address")] address: Option<String>,
+        #[graphql(desc = "Notes")] notes: Option<String>,
+    ) -> Result<GqlContactMutationResult> {
+        match commands::create_contact_record(commands::ContactInput {
+            name,
+            email,
+            phone,
+            organization,
+            title,
+            address,
+            notes,
+        })
+        .await
+        {
+            Ok(contact) => Ok(GqlContactMutationResult {
+                success: true,
+                contact: Some(GqlContact::from(contact)),
+                message: Some("Contact created".to_string()),
+                error: None,
+            }),
+            Err(error) => Ok(GqlContactMutationResult {
+                success: false,
+                contact: None,
+                message: None,
+                error: Some(error.to_string()),
+            }),
+        }
+    }
+
+    async fn update_contact(
+        &self,
+        #[graphql(desc = "Contact ID")] id: String,
+        #[graphql(desc = "Updated full name")] name: Option<String>,
+        #[graphql(desc = "Updated primary email address")] email: Option<String>,
+        #[graphql(desc = "Updated primary phone number")] phone: Option<String>,
+        #[graphql(desc = "Updated organization / company")] organization: Option<String>,
+        #[graphql(desc = "Updated job title")] title: Option<String>,
+        #[graphql(desc = "Updated street address")] address: Option<String>,
+        #[graphql(desc = "Updated notes")] notes: Option<String>,
+    ) -> Result<GqlContactMutationResult> {
+        match commands::update_contact_record(
+            &id,
+            commands::ContactPatch {
+                name,
+                email,
+                phone,
+                organization,
+                title,
+                address,
+                notes,
+            },
+        )
+        .await
+        {
+            Ok(contact) => Ok(GqlContactMutationResult {
+                success: true,
+                contact: Some(GqlContact::from(contact)),
+                message: Some(format!("Contact {} updated", id)),
+                error: None,
+            }),
+            Err(error) => Ok(GqlContactMutationResult {
+                success: false,
+                contact: None,
+                message: None,
+                error: Some(error.to_string()),
+            }),
+        }
+    }
+
+    async fn delete_contact(
+        &self,
+        #[graphql(desc = "PREVIEW first, then CONFIRM with the token from preview")]
+        action: ContactDeleteAction,
+        #[graphql(desc = "Contact ID")] id: String,
+        #[graphql(desc = "Confirmation token returned by PREVIEW")] confirmation_token: Option<
+            String,
+        >,
+    ) -> Result<GqlContactDeleteResult> {
+        let token = super::types::confirmation_token(&[&id]);
+
+        if matches!(action, ContactDeleteAction::Preview) {
+            return Ok(GqlContactDeleteResult {
+                success: true,
+                deleted_id: None,
+                preview: Some(format!(
+                    "Delete contact {}. Re-run deleteContact with action=CONFIRM and the confirmation token to proceed.",
+                    id
+                )),
+                confirmation_token: Some(token),
+                message: None,
+                error: None,
+            });
+        }
+
+        if confirmation_token.as_deref() != Some(&token) {
+            return Ok(GqlContactDeleteResult {
+                success: false,
+                deleted_id: None,
+                preview: None,
+                confirmation_token: None,
+                message: None,
+                error: Some(
+                    "Missing or invalid confirmation_token. Use action=PREVIEW first.".to_string(),
+                ),
+            });
+        }
+
+        match commands::delete_contact_record(&id).await {
+            Ok(()) => Ok(GqlContactDeleteResult {
+                success: true,
+                deleted_id: Some(id.clone()),
+                preview: None,
+                confirmation_token: None,
+                message: Some(format!("Contact {} deleted", id)),
+                error: None,
+            }),
+            Err(Error::ContactNotFound(_)) => Ok(GqlContactDeleteResult {
+                success: false,
+                deleted_id: None,
+                preview: None,
+                confirmation_token: None,
+                message: None,
+                error: Some(format!("Contact {} not found", id)),
+            }),
+            Err(error) => Ok(GqlContactDeleteResult {
+                success: false,
+                deleted_id: None,
+                preview: None,
+                confirmation_token: None,
+                message: None,
+                error: Some(error.to_string()),
+            }),
+        }
+    }
+
     /// Compose and send a new email. ALWAYS use action=PREVIEW first, show the user, then CONFIRM or DRAFT with the confirmation_token from the preview.
     async fn send_email(
         &self,
