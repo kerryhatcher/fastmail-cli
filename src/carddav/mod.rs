@@ -746,18 +746,18 @@ pub fn serialize_vcard(contact: &Contact) -> String {
     // EMAIL properties
     for email in &contact.emails {
         if let Some(label) = &email.label {
-            lines.push(format!("EMAIL;TYPE={}:{}", label, email.email));
+            lines.push(format!("EMAIL;TYPE={}:{}", escape_value(label), escape_value(&email.email)));
         } else {
-            lines.push(format!("EMAIL:{}", email.email));
+            lines.push(format!("EMAIL:{}", escape_value(&email.email)));
         }
     }
 
     // TEL properties
     for phone in &contact.phones {
         if let Some(label) = &phone.label {
-            lines.push(format!("TEL;TYPE={}:{}", label, phone.number));
+            lines.push(format!("TEL;TYPE={}:{}", escape_value(label), escape_value(&phone.number)));
         } else {
-            lines.push(format!("TEL:{}", phone.number));
+            lines.push(format!("TEL:{}", escape_value(&phone.number)));
         }
     }
 
