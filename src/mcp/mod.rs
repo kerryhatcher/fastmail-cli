@@ -4,6 +4,8 @@
 //! - `schema_sdl` — returns the full GraphQL SDL for introspection
 //! - `graphql` — executes a GraphQL query/mutation
 
+#![deny(clippy::await_holding_lock)]
+
 use std::sync::Arc;
 
 use rmcp::{

@@ -10,19 +10,6 @@ use super::types::*;
 
 pub struct MutationRoot;
 
-fn require_jmap_client<'a>(
-    ctx: &'a Context<'a>,
-) -> Result<std::sync::Arc<tokio::sync::Mutex<crate::jmap::JmapClient>>> {
-    ctx.data::<super::JmapContext>()?
-        .client
-        .clone()
-        .ok_or_else(|| {
-            async_graphql::Error::new(
-                "JMAP token not configured. Mail operations require FASTMAIL_API_TOKEN.",
-            )
-        })
-}
-
 #[Object]
 #[allow(clippy::too_many_arguments)]
 impl MutationRoot {
@@ -104,6 +91,7 @@ impl MutationRoot {
 
     async fn delete_contact(
         &self,
+        ctx: &Context<'_>,
         #[graphql(desc = "PREVIEW first, then CONFIRM with the token from preview")]
         action: ContactDeleteAction,
         #[graphql(desc = "Contact ID")] id: String,
@@ -111,7 +99,8 @@ impl MutationRoot {
             String,
         >,
     ) -> Result<GqlContactDeleteResult> {
-        let token = super::types::confirmation_token(&[&id]);
+        let app_ctx = ctx.data::<super::AppContext>()?;
+        let token = app_ctx.confirmation_token(&[&id]);
 
         if matches!(action, ContactDeleteAction::Preview) {
             return Ok(GqlContactDeleteResult {
@@ -213,6 +202,7 @@ impl MutationRoot {
 
     async fn delete_calendar(
         &self,
+        ctx: &Context<'_>,
         #[graphql(desc = "PREVIEW first, then CONFIRM with the token from preview")]
         action: CalendarDeleteAction,
         #[graphql(desc = "Calendar ID")] id: String,
@@ -220,7 +210,8 @@ impl MutationRoot {
             String,
         >,
     ) -> Result<GqlCalendarDeleteResult> {
-        let token = super::types::confirmation_token(&[&id]);
+        let app_ctx = ctx.data::<super::AppContext>()?;
+        let token = app_ctx.confirmation_token(&[&id]);
         if matches!(action, CalendarDeleteAction::Preview) {
             return Ok(GqlCalendarDeleteResult {
                 success: true,
@@ -382,6 +373,7 @@ impl MutationRoot {
 
     async fn delete_event(
         &self,
+        ctx: &Context<'_>,
         #[graphql(desc = "PREVIEW first, then CONFIRM with the token from preview")]
         action: EventDeleteAction,
         #[graphql(desc = "Event UID")] id: String,
@@ -390,7 +382,8 @@ impl MutationRoot {
             String,
         >,
     ) -> Result<GqlEventDeleteResult> {
-        let token = super::types::confirmation_token(&[&id, calendar_id.as_deref().unwrap_or("")]);
+        let app_ctx = ctx.data::<super::AppContext>()?;
+        let token = app_ctx.confirmation_token(&[&id, calendar_id.as_deref().unwrap_or("")]);
         if matches!(action, EventDeleteAction::Preview) {
             return Ok(GqlEventDeleteResult {
                 success: true,
@@ -456,7 +449,8 @@ impl MutationRoot {
         let to_addrs = parse_addresses(&to);
         let cc_addrs = cc.as_deref().map(parse_addresses).unwrap_or_default();
         let bcc_addrs = bcc.as_deref().map(parse_addresses).unwrap_or_default();
-        let token = super::types::confirmation_token(&[&to, &subject, &body]);
+        let app_ctx = ctx.data::<super::AppContext>()?;
+        let token = app_ctx.confirmation_token(&[&to, &subject, &body]);
 
         if matches!(action, SendAction::Preview) {
             return Ok(GqlComposeResult {
@@ -484,7 +478,7 @@ impl MutationRoot {
         }
 
         let draft = matches!(action, SendAction::Draft);
-        let client = require_jmap_client(ctx)?;
+        let client = app_ctx.require_jmap()?;
         let mut client = client.lock().await;
 
         match client
@@ -534,8 +528,9 @@ impl MutationRoot {
         #[graphql(desc = "Token from PREVIEW response — required for CONFIRM/DRAFT")]
         confirmation_token: Option<String>,
     ) -> Result<GqlComposeResult> {
-        let token = super::types::confirmation_token(&[&email_id, &body]);
-        let client = require_jmap_client(ctx)?;
+        let app_ctx = ctx.data::<super::AppContext>()?;
+        let token = app_ctx.confirmation_token(&[&email_id, &body]);
+        let client = app_ctx.require_jmap()?;
         let mut client = client.lock().await;
 
         let original = client.get_email(&email_id).await?;
@@ -647,8 +642,9 @@ impl MutationRoot {
         confirmation_token: Option<String>,
     ) -> Result<GqlComposeResult> {
         let body_str = body.as_deref().unwrap_or("");
-        let token = super::types::confirmation_token(&[&email_id, &to, body_str]);
-        let client = require_jmap_client(ctx)?;
+        let app_ctx = ctx.data::<super::AppContext>()?;
+        let token = app_ctx.confirmation_token(&[&email_id, &to, body_str]);
+        let client = app_ctx.require_jmap()?;
         let mut client = client.lock().await;
 
         let original = client.get_email(&email_id).await?;
@@ -751,7 +747,7 @@ impl MutationRoot {
         #[graphql(desc = "Target mailbox name (e.g., 'Archive', 'Trash') or role")]
         target_mailbox: String,
     ) -> Result<GqlStatus> {
-        let client = require_jmap_client(ctx)?;
+        let client = ctx.data::<super::AppContext>()?.require_jmap()?;
         let mut client = client.lock().await;
 
         let email = client.get_email(&email_id).await?;
@@ -784,7 +780,7 @@ impl MutationRoot {
             bool,
         >,
     ) -> Result<GqlStatus> {
-        let client = require_jmap_client(ctx)?;
+        let client = ctx.data::<super::AppContext>()?.require_jmap()?;
         let client = client.lock().await;
         let read = read.unwrap_or(true);
 
@@ -823,7 +819,7 @@ impl MutationRoot {
         #[graphql(desc = "The email ID")] email_id: String,
         #[graphql(desc = "PREVIEW first, then CONFIRM")] action: SpamAction,
     ) -> Result<GqlStatus> {
-        let client = require_jmap_client(ctx)?;
+        let client = ctx.data::<super::AppContext>()?.require_jmap()?;
         let mut client = client.lock().await;
 
         let email = client.get_email(&email_id).await?;
@@ -871,7 +867,7 @@ impl MutationRoot {
         #[graphql(desc = "A note to remember what this is for")] description: Option<String>,
         #[graphql(desc = "Custom prefix for the email address")] prefix: Option<String>,
     ) -> Result<GqlMaskedEmail> {
-        let client = require_jmap_client(ctx)?;
+        let client = ctx.data::<super::AppContext>()?.require_jmap()?;
         let client = client.lock().await;
         let masked = client
             .create_masked_email(
@@ -889,7 +885,7 @@ impl MutationRoot {
         ctx: &Context<'_>,
         #[graphql(desc = "The masked email ID")] id: String,
     ) -> Result<GqlStatus> {
-        let client = require_jmap_client(ctx)?;
+        let client = ctx.data::<super::AppContext>()?.require_jmap()?;
         let client = client.lock().await;
         match client
             .update_masked_email(&id, Some("enabled"), None, None)
@@ -914,7 +910,7 @@ impl MutationRoot {
         ctx: &Context<'_>,
         #[graphql(desc = "The masked email ID")] id: String,
     ) -> Result<GqlStatus> {
-        let client = require_jmap_client(ctx)?;
+        let client = ctx.data::<super::AppContext>()?.require_jmap()?;
         let client = client.lock().await;
         match client
             .update_masked_email(&id, Some("disabled"), None, None)
@@ -939,7 +935,7 @@ impl MutationRoot {
         ctx: &Context<'_>,
         #[graphql(desc = "The masked email ID")] id: String,
     ) -> Result<GqlStatus> {
-        let client = require_jmap_client(ctx)?;
+        let client = ctx.data::<super::AppContext>()?.require_jmap()?;
         let client = client.lock().await;
         match client
             .update_masked_email(&id, Some("deleted"), None, None)

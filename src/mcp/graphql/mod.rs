@@ -20,13 +20,6 @@ use query::QueryRoot;
 
 pub type FastmailSchema = Schema<QueryRoot, MutationRoot, async_graphql::EmptySubscription>;
 
-// TODO(14-02): remove JmapContext shim once resolvers migrate to AppContext
-pub struct JmapContext {
-    pub client: Option<Arc<Mutex<JmapClient>>>,
-}
-
-// Methods and fields will be used by plans 14-02, 14-03, and 14-04
-#[allow(dead_code)]
 pub struct AppContext {
     pub jmap: Option<Arc<Mutex<JmapClient>>>,
     pub carddav: Arc<OnceCell<Arc<CardDavClient>>>,
@@ -34,7 +27,6 @@ pub struct AppContext {
     pub hmac_key: Arc<[u8; 32]>,
 }
 
-#[allow(dead_code)]
 impl AppContext {
     /// Construct with a freshly generated random HMAC key (production).
     pub fn new(jmap: Option<Arc<Mutex<JmapClient>>>) -> Self {
@@ -134,11 +126,8 @@ impl AppContext {
 /// Build the GraphQL schema with the provided AppContext.
 /// Applies depth limit 5 and complexity limit 200 per D-09/D-10 (SEC-07).
 pub fn build_schema(ctx: AppContext) -> FastmailSchema {
-    // TODO(14-02): remove JmapContext shim once resolvers migrate to AppContext
-    let jmap_clone = ctx.jmap.clone();
     Schema::build(QueryRoot, MutationRoot, async_graphql::EmptySubscription)
         .data(ctx)
-        .data(JmapContext { client: jmap_clone })
         .limit_depth(5)
         .limit_complexity(200)
         .finish()
@@ -199,6 +188,32 @@ mod tests {
         assert!(
             sdl.contains("type Query") || sdl.contains("QueryRoot"),
             "SDL must contain a query type"
+        );
+    }
+
+    /// Per-instance key isolation: tokens from different AppContext instances must differ
+    /// (test for plan 14-02 Task 2 SEC-05 requirement).
+    #[test]
+    fn test_tokens_differ_across_different_key_instances() {
+        let ctx_a = AppContext::new_with_key(None, [1u8; 32]);
+        let ctx_b = AppContext::new_with_key(None, [2u8; 32]);
+        let token_a = ctx_a.confirmation_token(&["foo"]);
+        let token_b = ctx_b.confirmation_token(&["foo"]);
+        assert_ne!(
+            token_a, token_b,
+            "different HMAC keys must produce different tokens for same input"
+        );
+    }
+
+    /// Per-instance key stability: same key always produces same token for same input.
+    #[test]
+    fn test_token_stable_for_same_key() {
+        let ctx1 = AppContext::new_with_key(None, [1u8; 32]);
+        let ctx2 = AppContext::new_with_key(None, [1u8; 32]);
+        assert_eq!(
+            ctx1.confirmation_token(&["foo"]),
+            ctx2.confirmation_token(&["foo"]),
+            "same key + same input must always produce same token"
         );
     }
 }

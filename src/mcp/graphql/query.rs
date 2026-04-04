@@ -6,25 +6,13 @@ use super::types::*;
 
 pub struct QueryRoot;
 
-fn require_jmap_client<'a>(
-    ctx: &'a Context<'a>,
-) -> Result<std::sync::Arc<tokio::sync::Mutex<crate::jmap::JmapClient>>> {
-    ctx.data::<super::JmapContext>()?
-        .client
-        .clone()
-        .ok_or_else(|| {
-            async_graphql::Error::new(
-                "JMAP token not configured. Mail operations require FASTMAIL_API_TOKEN.",
-            )
-        })
-}
-
 #[Object]
 #[allow(clippy::too_many_arguments)]
 impl QueryRoot {
     /// List all mailboxes (folders) with unread counts. Start here to discover available folders.
     async fn mailboxes(&self, ctx: &Context<'_>) -> Result<Vec<GqlMailbox>> {
-        let client = require_jmap_client(ctx)?;
+        // Note: tokio::sync::MutexGuard is Send and safe to hold across .await (STAB-07 audit 2026-04-04).
+        let client = ctx.data::<super::AppContext>()?.require_jmap()?;
         let mut client = client.lock().await;
         let mut mailboxes = client.list_mailboxes().await?;
         mailboxes.sort_by(|a, b| match (&a.role, &b.role) {
@@ -47,7 +35,7 @@ impl QueryRoot {
             u32,
         >,
     ) -> Result<Vec<GqlEmailSummary>> {
-        let client = require_jmap_client(ctx)?;
+        let client = ctx.data::<super::AppContext>()?.require_jmap()?;
         let mut client = client.lock().await;
         let limit = limit.unwrap_or(25).min(100);
         let mb = client.find_mailbox(&mailbox).await?;
@@ -62,7 +50,7 @@ impl QueryRoot {
         ctx: &Context<'_>,
         #[graphql(desc = "The email ID (from emails or searchEmails queries)")] id: String,
     ) -> Result<Option<GqlEmail>> {
-        let client = require_jmap_client(ctx)?;
+        let client = ctx.data::<super::AppContext>()?.require_jmap()?;
         let client = client.lock().await;
         match client.get_email(&id).await {
             Ok(email) => Ok(Some(GqlEmail(email))),
@@ -78,7 +66,7 @@ impl QueryRoot {
         ctx: &Context<'_>,
         #[graphql(desc = "Any email ID in the thread")] email_id: String,
     ) -> Result<GqlThread> {
-        let client = require_jmap_client(ctx)?;
+        let client = ctx.data::<super::AppContext>()?.require_jmap()?;
         let client = client.lock().await;
         let mut emails = client.get_thread(&email_id).await?;
         emails.sort_by(|a, b| a.received_at.cmp(&b.received_at));
@@ -107,7 +95,7 @@ impl QueryRoot {
         #[graphql(desc = "Only flagged/starred emails")] flagged: Option<bool>,
         #[graphql(desc = "Maximum number of results (default 25, max 100)")] limit: Option<u32>,
     ) -> Result<Vec<GqlEmailSummary>> {
-        let client = require_jmap_client(ctx)?;
+        let client = ctx.data::<super::AppContext>()?.require_jmap()?;
         let mut client = client.lock().await;
         let limit = limit.unwrap_or(25).min(100);
 
@@ -147,7 +135,7 @@ impl QueryRoot {
         ctx: &Context<'_>,
         #[graphql(desc = "The email ID")] email_id: String,
     ) -> Result<Vec<GqlAttachment>> {
-        let client = require_jmap_client(ctx)?;
+        let client = ctx.data::<super::AppContext>()?.require_jmap()?;
         let client = client.lock().await;
         let email = client.get_email(&email_id).await?;
         Ok(GqlEmail(email).make_attachments())
@@ -160,7 +148,7 @@ impl QueryRoot {
         #[graphql(desc = "The email ID the attachment belongs to")] email_id: String,
         #[graphql(desc = "The blob ID of the attachment (from attachments query)")] blob_id: String,
     ) -> Result<Option<GqlAttachment>> {
-        let client = require_jmap_client(ctx)?;
+        let client = ctx.data::<super::AppContext>()?.require_jmap()?;
         let client = client.lock().await;
         let email = client.get_email(&email_id).await?;
         Ok(GqlEmail(email)
@@ -171,7 +159,7 @@ impl QueryRoot {
 
     /// List all sender identities on the account. Includes signatures and default reply-to/bcc.
     async fn identities(&self, ctx: &Context<'_>) -> Result<Vec<GqlIdentity>> {
-        let client = require_jmap_client(ctx)?;
+        let client = ctx.data::<super::AppContext>()?.require_jmap()?;
         let client = client.lock().await;
         let identities = client.list_identities().await?;
         Ok(identities.into_iter().map(GqlIdentity::from).collect())
@@ -179,7 +167,7 @@ impl QueryRoot {
 
     /// List all masked email addresses.
     async fn masked_emails(&self, ctx: &Context<'_>) -> Result<Vec<GqlMaskedEmail>> {
-        let client = require_jmap_client(ctx)?;
+        let client = ctx.data::<super::AppContext>()?.require_jmap()?;
         let client = client.lock().await;
         let mut masked = client.list_masked_emails().await?;
         masked.sort_by(|a, b| {
@@ -197,38 +185,19 @@ impl QueryRoot {
     /// Search contacts by name, email, or organization. Requires FASTMAIL_APP_PASSWORD.
     async fn contacts(
         &self,
+        ctx: &Context<'_>,
         #[graphql(desc = "Search query — matches name, email, or organization")] query: String,
     ) -> Result<Vec<GqlContact>> {
-        let config = crate::config::Config::load()?;
-        let username = config.get_username().map_err(|_| {
-            async_graphql::Error::new("Username not configured. Set FASTMAIL_USERNAME env var.")
-        })?;
-        let app_password = config.get_app_password().map_err(|_| {
-            async_graphql::Error::new(
-                "App password not configured. Set FASTMAIL_APP_PASSWORD env var (API tokens don't work for CardDAV).",
-            )
-        })?;
-
-        let client = crate::carddav::CardDavClient::new(username, app_password)
-            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        let app_ctx = ctx.data::<super::AppContext>()?;
+        let client = app_ctx.get_carddav().await?;
         let contacts = client.search_contacts(&query).await?;
         Ok(contacts.into_iter().map(GqlContact::from).collect())
     }
 
     /// List calendars available through Fastmail CalDAV. Requires FASTMAIL_APP_PASSWORD.
-    async fn calendars(&self) -> Result<Vec<GqlCalendar>> {
-        let config = crate::config::Config::load()?;
-        let username = config.get_username().map_err(|_| {
-            async_graphql::Error::new("Username not configured. Set FASTMAIL_USERNAME env var.")
-        })?;
-        let app_password = config.get_app_password().map_err(|_| {
-            async_graphql::Error::new(
-                "App password not configured. Set FASTMAIL_APP_PASSWORD env var (API tokens don't work for CalDAV).",
-            )
-        })?;
-
-        let client = crate::caldav::CalDavClient::new(username, app_password)
-            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+    async fn calendars(&self, ctx: &Context<'_>) -> Result<Vec<GqlCalendar>> {
+        let app_ctx = ctx.data::<super::AppContext>()?;
+        let client = app_ctx.get_caldav().await?;
         let calendars = client.list_calendars().await?;
         Ok(calendars.into_iter().map(Into::into).collect())
     }

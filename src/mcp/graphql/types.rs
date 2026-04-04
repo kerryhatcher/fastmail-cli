@@ -8,19 +8,6 @@ use crate::caldav::{
 use crate::carddav::{Contact, ContactEmail, ContactPhone};
 use crate::models::{Email, EmailAddress, Identity, Mailbox, MaskedEmail};
 
-fn require_jmap_client<'a>(
-    ctx: &'a Context<'a>,
-) -> Result<std::sync::Arc<tokio::sync::Mutex<crate::jmap::JmapClient>>> {
-    ctx.data::<super::JmapContext>()?
-        .client
-        .clone()
-        .ok_or_else(|| {
-            async_graphql::Error::new(
-                "JMAP token not configured. Mail operations require FASTMAIL_API_TOKEN.",
-            )
-        })
-}
-
 // ============ Output Types ============
 
 #[derive(SimpleObject)]
@@ -263,7 +250,7 @@ impl GqlAttachment {
     /// Fetch the actual attachment content. Images are resized and base64-encoded,
     /// documents have text extracted. Only fetched when this field is included in the query.
     async fn content(&self, ctx: &Context<'_>) -> Result<GqlAttachmentContent> {
-        let client = require_jmap_client(ctx)?;
+        let client = ctx.data::<super::AppContext>()?.require_jmap()?;
         let client = client.lock().await;
 
         let content_type = self
@@ -722,16 +709,6 @@ pub struct GqlComposeResult {
     pub confirmation_token: Option<String>,
     /// Error message if failed
     pub error: Option<String>,
-}
-
-/// Generate a confirmation token from email parameters (stateless preview guard)
-pub fn confirmation_token(parts: &[&str]) -> String {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    for part in parts {
-        part.hash(&mut hasher);
-    }
-    format!("{:016x}", hasher.finish())
 }
 
 #[derive(SimpleObject)]
