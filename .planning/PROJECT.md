@@ -2,7 +2,7 @@
 
 ## What This Is
 
-fastmail-cli is a terminal and AI-facing Fastmail integration that already covers JMAP mail workflows and CardDAV contact CRUD. The next milestone expands it into calendar management so users and AI agents can inspect schedules and create, update, and delete calendars and events without leaving the CLI or MCP server.
+fastmail-cli is a terminal and AI-facing Fastmail integration covering JMAP mail workflows, CardDAV contact CRUD, and CalDAV calendar/event management. Users and AI agents can manage mail, contacts, and calendars without leaving the CLI or MCP server.
 
 ## Core Value
 
@@ -10,10 +10,12 @@ Users can manage Fastmail data without leaving the terminal or AI assistant, wit
 
 ## Current State
 
-- Shipped milestone: `v1.0` on 2026-04-03
-- Delivered: CardDAV-backed contact CRUD in both CLI and MCP GraphQL surfaces
-- Verification status: milestone audit passed; local tests and lint gates were green during completion
-- Remaining risk: live Fastmail validation is still recommended for final confidence in server-specific CardDAV behavior
+- Shipped milestone: `v1.1` on 2026-04-04
+- Delivered: Full CalDAV calendar and event management in CLI and MCP GraphQL
+- Previous: `v1.0` (2026-04-03) — CardDAV contact CRUD
+- Verification status: milestone audit passed (28/28 requirements, all phases verified against live Fastmail)
+- Codebase: ~3,600 Rust LOC added in v1.1, 103 tests passing, zero clippy warnings
+- Known tech debt: see CODEBASE-REVIEW.md (33 findings across security, stability, performance, quality)
 
 ## Requirements
 
@@ -23,22 +25,23 @@ Users can manage Fastmail data without leaving the terminal or AI assistant, wit
 - ✓ Contact list and search via CardDAV — existing
 - ✓ MCP server with GraphQL queries for mail and contacts — existing
 - ✓ CLI command structure with mail and `contacts` subcommands — existing
-- ✓ Contact struct carries href/etag from server — Validated in Phase 1: Contact Model Foundation
-- ✓ Write-specific error variants (ContactNotFound, ContactConflict) — Validated in Phase 1: Contact Model Foundation
-- ✓ Generate valid vCard 3.0 with FN, N, EMAIL, ORG, TEL, ADR, NOTE — Validated in Phase 2: vCard Serialization
-- ✓ Line folding at 75 octets with CRLF, character escaping, UUID v4 UIDs — Validated in Phase 2: vCard Serialization
-- ✓ CardDAV create/update/delete with ETag-guarded writes — Validated in Phase 3: CardDAV Write Operations
-- ✓ CLI contact create/update/delete with partial updates and explicit delete confirmation — Validated in Phase 4: CLI & MCP Surfaces
-- ✓ MCP `createContact`, `updateContact`, and `deleteContact` mutations — Validated in Phase 4: CLI & MCP Surfaces
+- ✓ Contact struct carries href/etag from server — v1.0
+- ✓ Write-specific error variants (ContactNotFound, ContactConflict) — v1.0
+- ✓ Generate valid vCard 3.0 with FN, N, EMAIL, ORG, TEL, ADR, NOTE — v1.0
+- ✓ Line folding at 75 octets with CRLF, character escaping, UUID v4 UIDs — v1.0
+- ✓ CardDAV create/update/delete with ETag-guarded writes — v1.0
+- ✓ CLI contact create/update/delete with partial updates and explicit delete confirmation — v1.0
+- ✓ MCP `createContact`, `updateContact`, and `deleteContact` mutations — v1.0
+- ✓ Full CalDAV calendar discovery and calendar CRUD against Fastmail — v1.1
+- ✓ Event listing with default future-today behavior, week views, and explicit date ranges — v1.1
+- ✓ Event get/create/update/delete with title, start/end, timezone, location, description, attendees, recurrence, and reminders — v1.1
+- ✓ CLI calendar commands that make schedule inspection and event management scriptable — v1.1
+- ✓ MCP GraphQL calendar/event queries and mutations for AI-agent workflows — v1.1
+- ✓ Live Fastmail validation of calendar and event CRUD behavior — v1.1
 
 ### Active
 
-- [ ] Full CalDAV calendar discovery and calendar CRUD against Fastmail
-- [ ] Event listing with default future-today behavior, week views, and explicit date ranges
-- [ ] Event get/create/update/delete flows with title, start/end, timezone, location, description, attendees, recurrence, and reminders
-- [ ] CLI calendar commands that make schedule inspection and event management scriptable
-- [ ] MCP GraphQL calendar/event queries and mutations for AI-agent workflows
-- [ ] Live Fastmail validation of calendar and event CRUD behavior
+(Next milestone will define active requirements)
 
 ### Out of Scope
 
@@ -78,20 +81,16 @@ Users can manage Fastmail data without leaving the terminal or AI assistant, wit
 | Store ETag verbatim including surrounding quotes | Required for correct `If-Match` behavior against CardDAV servers | ✓ Shipped in v1.0 |
 | Serialize `href` and `etag` in contact JSON/GraphQL output | Callers need raw server metadata for inspection and follow-on operations | ✓ Shipped in v1.0 |
 | `ContactConflict.server_etag` remains optional | 412 responses may not include the server's latest ETag | ✓ Shipped in v1.0 |
-| Implement calendar support via a sibling CalDAV layer, not JMAP | Fastmail's published API surface exposes calendars over CalDAV today | — Pending |
-| Keep MCP calendar actions explicit rather than natural-language | Lets AI agents compose higher-level behavior without baking brittle interpretation into the API | — Pending |
+| Implement calendar support via a sibling CalDAV layer, not JMAP | Fastmail's published API surface exposes calendars over CalDAV today | ✓ Shipped in v1.1 |
+| Keep MCP calendar actions explicit rather than natural-language | Lets AI agents compose higher-level behavior without baking brittle interpretation into the API | ✓ Shipped in v1.1 |
+| ETag-safe writes for calendar & event CRUD | Consistent with contact CRUD concurrency safety | ✓ Shipped in v1.1 |
+| Retry calendar delete without If-Match on 412 | Fastmail returns 412 without replacement ETag in narrow case | ✓ Shipped in v1.1 |
+| Require both --start and --end for explicit ranges | Avoids ambiguous one-bound semantics in event listing | ✓ Shipped in v1.1 |
+| --clear-attendees flag conflicts with --attendee | Prevents ambiguous intent when clearing vs setting attendees | ✓ Shipped in v1.1 |
 
-## Current Milestone: v1.1 Calendar Access and Management
+## Next Milestone Goals
 
-**Goal:** Add full Fastmail calendar and event management to the CLI and MCP so users and AI agents can inspect schedules and CRUD calendars/events from terminal workflows.
-
-**Target features:**
-- Calendar object management: list, create, rename/update, delete
-- Event management: list, inspect, create, update, delete
-- CLI event listing defaults for future events today, plus week and explicit-range views
-- Event fields for v1.1: title, start/end, timezone, location, description, attendees, recurrence, reminders
-- Minimal MCP GraphQL calendar/event operations for agent workflows
-- Live Fastmail validation for calendar and event CRUD flows
+(To be defined via `/gsd:new-milestone`)
 
 ## Evolution
 
@@ -111,4 +110,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-03 after starting milestone v1.1*
+*Last updated: 2026-04-04 after v1.1 milestone completion*
