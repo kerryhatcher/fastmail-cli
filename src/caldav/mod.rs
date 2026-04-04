@@ -1316,21 +1316,89 @@ fn parse_attendee(line: &str) -> Option<EventAttendee> {
     Some(attendee)
 }
 
+/// RFC 5545 §3.3.10: FREQ must be one of the seven enumerated literal values.
+fn is_valid_freq(s: &str) -> bool {
+    matches!(
+        s.to_ascii_uppercase().as_str(),
+        "SECONDLY" | "MINUTELY" | "HOURLY" | "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY"
+    )
+}
+
+/// RFC 5545 §3.3.10: UNTIL is DATE (YYYYMMDD, 8 digits) or DATE-TIME (YYYYMMDDTHHMMSSZ, 16 chars ending Z).
+fn is_valid_rrule_until(s: &str) -> bool {
+    let is_date = s.len() == 8 && s.bytes().all(|b| b.is_ascii_digit());
+    let is_datetime_utc = s.len() == 16
+        && s.as_bytes().get(8) == Some(&b'T')
+        && s.as_bytes().get(15) == Some(&b'Z')
+        && s[0..8].bytes().all(|b| b.is_ascii_digit())
+        && s[9..15].bytes().all(|b| b.is_ascii_digit());
+    is_date || is_datetime_utc
+}
+
+/// RFC 5545 §3.3.10 weekdaynum: [[+-]1DIGIT or 2DIGIT] + SU/MO/TU/WE/TH/FR/SA
+fn is_valid_byday(s: &str) -> bool {
+    let up = s.to_ascii_uppercase();
+    let bytes = up.as_bytes();
+    if bytes.len() < 2 {
+        return false;
+    }
+    let wd_start = bytes.len() - 2;
+    let weekday = &up[wd_start..];
+    if !matches!(weekday, "SU" | "MO" | "TU" | "WE" | "TH" | "FR" | "SA") {
+        return false;
+    }
+    let prefix = &up[..wd_start];
+    if prefix.is_empty() {
+        return true;
+    }
+    let prefix = prefix
+        .strip_prefix('+')
+        .or_else(|| prefix.strip_prefix('-'))
+        .unwrap_or(prefix);
+    !prefix.is_empty() && prefix.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// Normalize and validate an ATTENDEE ROLE parameter value against the RFC 5545 enum.
+fn sanitize_role(role: &str) -> Option<String> {
+    let up = role.to_ascii_uppercase();
+    matches!(
+        up.as_str(),
+        "CHAIR" | "REQ-PARTICIPANT" | "OPT-PARTICIPANT" | "NON-PARTICIPANT"
+    )
+    .then_some(up)
+}
+
+/// Normalize and validate an ATTENDEE PARTSTAT parameter value against the RFC 5545 enum.
+fn sanitize_partstat(partstat: &str) -> Option<String> {
+    let up = partstat.to_ascii_uppercase();
+    matches!(
+        up.as_str(),
+        "NEEDS-ACTION"
+            | "ACCEPTED"
+            | "DECLINED"
+            | "TENTATIVE"
+            | "DELEGATED"
+            | "COMPLETED"
+            | "IN-PROCESS"
+    )
+    .then_some(up)
+}
+
 fn serialize_attendee(attendee: &EventAttendee) -> String {
     let mut prop = "ATTENDEE".to_string();
     if let Some(name) = &attendee.name {
         prop.push_str(&format!(";CN={}", escape_ical_value(name)));
     }
-    if let Some(role) = &attendee.role {
+    if let Some(role) = attendee.role.as_deref().and_then(sanitize_role) {
         prop.push_str(&format!(";ROLE={role}"));
     }
-    if let Some(partstat) = &attendee.partstat {
+    if let Some(partstat) = attendee.partstat.as_deref().and_then(sanitize_partstat) {
         prop.push_str(&format!(";PARTSTAT={partstat}"));
     }
     if let Some(rsvp) = attendee.rsvp {
         prop.push_str(&format!(";RSVP={}", if rsvp { "TRUE" } else { "FALSE" }));
     }
-    format!("{prop}:mailto:{}", attendee.email)
+    format!("{prop}:mailto:{}", escape_ical_value(&attendee.email))
 }
 
 fn parse_rrule(value: &str) -> Option<EventRecurrence> {
@@ -1354,18 +1422,31 @@ fn parse_rrule(value: &str) -> Option<EventRecurrence> {
 }
 
 fn serialize_rrule(recurrence: &EventRecurrence) -> String {
-    let mut parts = vec![format!("FREQ={}", recurrence.frequency)];
+    let freq = if is_valid_freq(&recurrence.frequency) {
+        recurrence.frequency.to_ascii_uppercase()
+    } else {
+        String::new()
+    };
+    let mut parts = vec![format!("FREQ={freq}")];
     if let Some(interval) = recurrence.interval {
         parts.push(format!("INTERVAL={interval}"));
     }
     if let Some(count) = recurrence.count {
         parts.push(format!("COUNT={count}"));
     }
-    if let Some(until) = &recurrence.until {
-        parts.push(format!("UNTIL={until}"));
+    if let Some(until) = recurrence.until.as_deref() {
+        if is_valid_rrule_until(until) {
+            parts.push(format!("UNTIL={until}"));
+        }
     }
-    if !recurrence.by_day.is_empty() {
-        parts.push(format!("BYDAY={}", recurrence.by_day.join(",")));
+    let by_day: Vec<String> = recurrence
+        .by_day
+        .iter()
+        .filter(|d| is_valid_byday(d))
+        .map(|d| d.to_ascii_uppercase())
+        .collect();
+    if !by_day.is_empty() {
+        parts.push(format!("BYDAY={}", by_day.join(",")));
     }
     parts.join(";")
 }
