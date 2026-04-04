@@ -28,7 +28,7 @@
 - [x] **STAB-04**: The MCP server handles SIGINT/SIGTERM gracefully, flushing pending responses before exit (or documents that `rmcp` handles it). *(finding #17)*
 - [ ] **STAB-05**: `download.rs` removes the fragile triple-`unwrap()` pattern in favor of a `let Some(..) else { return }` guard. *(finding #18)*
 - [ ] **STAB-06**: `search_contacts()` tolerates per-address-book failures — one failing book logs and continues instead of aborting the entire search. *(finding #19)*
-- [ ] **STAB-07**: The MCP `Mutex` guard on `JmapClient` is dropped before awaiting downstream I/O so concurrent GraphQL requests are not serialized. *(finding #26)*
+- [x] **STAB-07**: The MCP `Mutex` guard on `JmapClient` is dropped before awaiting downstream I/O so concurrent GraphQL requests are not serialized. *(finding #26)*
 - [ ] **STAB-08**: Fallback contact IDs use a stable hasher rather than `DefaultHasher`, so IDs remain consistent across Rust versions. *(finding #27)*
 - [x] **STAB-09**: `JmapClient::new()` returns a `Result` instead of `.expect()`-panicking on builder failure. *(finding #32)*
 - [x] **STAB-10**: Config corruption errors include guidance on how to recover (reset path, expected schema). *(finding #33)*
@@ -92,7 +92,7 @@
 | STAB-04 | Phase 14 | Complete |
 | STAB-05 | Phase 17 | Pending |
 | STAB-06 | Phase 15 | Pending |
-| STAB-07 | Phase 14 | Pending |
+| STAB-07 | Phase 14 | Complete |
 | STAB-08 | Phase 17 | Pending |
 | STAB-09 | Phase 12 | Complete |
 | STAB-10 | Phase 12 | Complete |
