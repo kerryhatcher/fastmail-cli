@@ -1400,3 +1400,40 @@ mod tests {
         assert!(format!("{}", err).contains("Invalid API token"));
     }
 }
+
+#[cfg(test)]
+mod sec09_tests {
+    use super::encode_blob_url_segment;
+
+    #[test]
+    fn test_encode_space_and_dot() {
+        assert_eq!(
+            encode_blob_url_segment("hello world.pdf"),
+            "hello%20world%2Epdf"
+        );
+    }
+
+    #[test]
+    fn test_encode_unicode() {
+        assert_eq!(
+            encode_blob_url_segment("日本.txt"),
+            "%E6%97%A5%E6%9C%AC%2Etxt"
+        );
+    }
+
+    #[test]
+    fn test_encode_url_reserved() {
+        assert_eq!(
+            encode_blob_url_segment("abc/def#ghi"),
+            "abc%2Fdef%23ghi"
+        );
+    }
+
+    #[test]
+    fn test_encode_alphanumeric_unchanged() {
+        assert_eq!(
+            encode_blob_url_segment("BlobId123ABC"),
+            "BlobId123ABC"
+        );
+    }
+}
