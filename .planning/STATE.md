@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: Calendar Access and Management
-status: archived
-stopped_at: v1.1 archived; ready for next milestone
-last_updated: "2026-04-04T15:10:00.000Z"
-last_activity: 2026-04-04 - Archived milestone v1.1 with all phases
+milestone: v1.2
+milestone_name: Hardening & Quality
+status: active
+stopped_at: v1.2 started; defining requirements
+last_updated: "2026-04-04T16:00:00.000Z"
+last_activity: 2026-04-04 - Started milestone v1.2 Hardening & Quality
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 7
-  completed_plans: 7
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,13 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-04)
 
 **Core value:** Users can manage Fastmail data without leaving the terminal or AI assistant, with automation-friendly APIs that stay faithful to Fastmail's actual protocol boundaries
-**Current focus:** Planning next milestone
+**Current focus:** Defining requirements for v1.2 Hardening & Quality
 
 ## Current Position
 
-Phase: N/A — between milestones
-Status: v1.1 archived, ready for `/gsd:new-milestone`
-Last activity: 2026-04-04 — Completed milestone archival
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-04-04 — Milestone v1.2 started
 
 ## Accumulated Context
 
@@ -37,7 +38,7 @@ All v1.0 and v1.1 decisions logged in PROJECT.md Key Decisions table.
 
 ### Pending Todos
 
-(None — milestone archived)
+(None — milestone just started)
 
 ### Blockers/Concerns
 
@@ -46,5 +47,5 @@ All v1.0 and v1.1 decisions logged in PROJECT.md Key Decisions table.
 ## Session Continuity
 
 Last session: 2026-04-04
-Stopped at: v1.1 archived; ready for next milestone via `/gsd:new-milestone`
-Resume file: .planning/MILESTONES.md
+Stopped at: v1.2 milestone initialized; requirements being defined
+Resume file: .planning/PROJECT.md
