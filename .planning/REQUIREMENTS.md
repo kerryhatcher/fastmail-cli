@@ -13,7 +13,7 @@
 - [x] **SEC-01**: Attachment downloads never write outside the user-specified output directory, even when the server provides a path-traversing filename. *(finding #3)*
 - [x] **SEC-02**: vCard EMAIL/TEL labels and values are escaped/validated so malicious labels cannot inject additional vCard properties. *(finding #8)*
 - [x] **SEC-03**: iCalendar attendee fields (`role`, `partstat`, `email`) and RRULE fields (`frequency`, `until`, `by_day`) are validated or escaped during serialization. *(finding #9)*
-- [ ] **SEC-04**: The `auth` command accepts the API token via stdin, environment variable, or interactive prompt — never via a positional CLI argument visible in `ps`/shell history. *(finding #10)*
+- [x] **SEC-04**: The `auth` command accepts the API token via stdin, environment variable, or interactive prompt — never via a positional CLI argument visible in `ps`/shell history. *(finding #10)*
 - [ ] **SEC-05**: MCP destructive-mutation confirmation tokens are bound to a per-process random nonce so they cannot be forged from known input parameters alone. *(finding #14)*
 - [x] **SEC-06**: Config structs holding `api_token` and `app_password` never print secrets via `{:?}` — values are wrapped in `secrecy::SecretString` and redact to `[REDACTED]`. *(finding #15)*
 - [ ] **SEC-07**: The MCP GraphQL schema enforces depth and complexity limits to bound query cost. *(finding #24)*
@@ -80,7 +80,7 @@
 | SEC-01 | Phase 12 | Complete |
 | SEC-02 | Phase 13 | Complete |
 | SEC-03 | Phase 13 | Complete |
-| SEC-04 | Phase 13 | Pending |
+| SEC-04 | Phase 13 | Complete |
 | SEC-05 | Phase 14 | Pending |
 | SEC-06 | Phase 12 | Complete |
 | SEC-07 | Phase 14 | Pending |
