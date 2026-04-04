@@ -1,7 +1,20 @@
 use crate::jmap::authenticated_client;
 use crate::models::Output;
 use crate::util::{extract_text, infer_image_mime, is_image, parse_size, resize_image};
+use std::ffi::OsStr;
 use std::path::Path;
+
+/// Strip any directory components from a server-supplied filename.
+///
+/// Prevents path traversal attacks (e.g. `../../../etc/passwd` → `passwd`).
+/// Falls back to `"attachment"` when the path has no basename (e.g. `..` or empty string).
+fn safe_filename(raw: &str) -> String {
+    Path::new(raw)
+        .file_name()
+        .unwrap_or_else(|| OsStr::new("attachment"))
+        .to_string_lossy()
+        .to_string()
+}
 
 pub async fn download_attachment(
     email_id: &str,
@@ -109,7 +122,7 @@ pub async fn download_attachment(
             (bytes, filename.clone())
         };
 
-        let path = Path::new(out_dir).join(&final_filename);
+        let path = Path::new(out_dir).join(safe_filename(&final_filename));
         std::fs::write(&path, &final_bytes)?;
 
         downloaded.push(path.to_string_lossy().to_string());
@@ -131,4 +144,34 @@ struct AttachmentContent {
     content_type: String,
     size: usize,
     text: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::safe_filename;
+
+    #[test]
+    fn test_safe_filename_strips_parent_traversal() {
+        assert_eq!(safe_filename("../../../etc/passwd"), "passwd");
+    }
+
+    #[test]
+    fn test_safe_filename_strips_absolute_path() {
+        assert_eq!(safe_filename("/absolute/path/file.pdf"), "file.pdf");
+    }
+
+    #[test]
+    fn test_safe_filename_dotdot_falls_back_to_attachment() {
+        assert_eq!(safe_filename(".."), "attachment");
+    }
+
+    #[test]
+    fn test_safe_filename_empty_falls_back_to_attachment() {
+        assert_eq!(safe_filename(""), "attachment");
+    }
+
+    #[test]
+    fn test_safe_filename_plain_name_preserved() {
+        assert_eq!(safe_filename("normal.txt"), "normal.txt");
+    }
 }
