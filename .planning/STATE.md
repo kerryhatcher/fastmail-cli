@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Hardening & Quality
-status: executing
-stopped_at: Completed 14-02-PLAN.md
-last_updated: "2026-04-04T23:51:55.909Z"
+status: verifying
+stopped_at: Completed 14-03-PLAN.md
+last_updated: "2026-04-04T23:56:24.040Z"
 last_activity: 2026-04-04
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 12
-  completed_plans: 11
+  completed_plans: 12
   percent: 0
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-04-04)
 
 Phase: 14 (mcp-layer-refactor) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-04
 
 Progress: [░░░░░░░░░░] 0%
@@ -58,6 +58,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 14 P04 | 147s | 1 tasks | 1 files |
 | Phase 14 P01 | 212s | 2 tasks | 3 files |
 | Phase 14-mcp-layer-refactor P02 | 320s | 2 tasks | 5 files |
+| Phase 14-mcp-layer-refactor P03 | 145s | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -87,6 +88,9 @@ Pending user decision before Phase 12 planning:
 - [Phase 14]: Used .limit_depth(5).limit_complexity(200) in build_schema; injected JmapContext shim alongside AppContext for unmigrated resolvers (TODO 14-02)
 - [Phase 14-mcp-layer-refactor]: delete_contact/delete_calendar/delete_event ctx parameter added — resolvers originally ctx-less (used free confirmation_token fn), now need AppContext for HMAC
 - [Phase 14-mcp-layer-refactor]: reply_to_email and forward_email keep client-before-preview pattern — needed to fetch original email for preview; app_ctx acquired first so token and client from same context
+- [Phase 14-03]: Reused SpamAction enum (no MarkAsSpamAction) per RESEARCH.md Open Question 1 resolution — zero GraphQL SDL type churn
+- [Phase 14-03]: Token validation placed BEFORE require_jmap() in mark_as_spam — prevents unauthenticated JMAP lock acquisition; enables unit tests without JMAP client
+- [Phase 14-03]: PREVIEW surfaces token in GqlStatus.message body (not new field) — avoids ripple changes to other resolvers using GqlStatus
 
 ### Pending Todos
 
@@ -99,6 +103,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-04T23:51:55.906Z
-Stopped at: Completed 14-02-PLAN.md
+Last session: 2026-04-04T23:56:24.038Z
+Stopped at: Completed 14-03-PLAN.md
 Resume file: None

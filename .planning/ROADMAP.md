@@ -37,7 +37,7 @@
 
 - [x] **Phase 12: Foundation Safety** - Establish the safe baseline: HTTP 4xx surfacing, DAV timeouts, JSON output contract, path traversal defense, secret redaction, and constructor hardening (completed 2026-04-04)
 - [x] **Phase 13: Security Hardening** - Injection escaping for vCard/iCal serialization, URL encoding for blob download URLs, and auth token input documentation (completed 2026-04-04)
-- [ ] **Phase 14: MCP Layer Refactor** - Atomic delivery: shared AppContext DAV client pool, nonce-bound confirmation tokens, GraphQL limits, signal handling, and mutex-narrowing
+- [x] **Phase 14: MCP Layer Refactor** - Atomic delivery: shared AppContext DAV client pool, nonce-bound confirmation tokens, GraphQL limits, signal handling, and mutex-narrowing (completed 2026-04-04)
 - [ ] **Phase 15: Performance** - Concurrent DAV fetching, targeted UID REPORT lookup, allocation reductions across JMAP and MCP layers, optional kreuzberg feature flag
 - [ ] **Phase 16: Integration Test Coverage** - wiremock-based tests in `tests/` verifying JMAP, send, auth, CalDAV, CardDAV, and HTTP error paths without a live server
 - [ ] **Phase 17: Quality Polish** - let-else patterns, stable contact ID hashing, faster image resize filter, tokio feature trim, and stale allow cleanup
@@ -88,7 +88,7 @@
 **Plans**: 4 plans
 - [x] 14-01-PLAN.md — AppContext foundation (OnceCell DAV, HMAC key, schema limits)
 - [x] 14-02-PLAN.md — Migrate resolvers to AppContext (DAV sharing, HMAC tokens, STAB-07 audit)
-- [ ] 14-03-PLAN.md — markAsSpam HMAC confirmation gate (SEC-08)
+- [x] 14-03-PLAN.md — markAsSpam HMAC confirmation gate (SEC-08)
 - [x] 14-04-PLAN.md — SIGTERM/SIGINT graceful shutdown (STAB-04)
 
 ### Phase 15: Performance
@@ -102,7 +102,7 @@
   4. Blob downloads return `bytes::Bytes` without a double-allocation; `parse_response` consumes owned JSON without cloning the response subtree
 **Plans**: 4 plans
 - [x] 14-01-PLAN.md — AppContext foundation (OnceCell DAV, HMAC key, schema limits)
-- [ ] 14-02-PLAN.md — Migrate resolvers to AppContext (DAV sharing, HMAC tokens, STAB-07 audit)
+- [x] 14-02-PLAN.md — Migrate resolvers to AppContext (DAV sharing, HMAC tokens, STAB-07 audit)
 - [ ] 14-03-PLAN.md — markAsSpam HMAC confirmation gate (SEC-08)
 - [x] 14-04-PLAN.md — SIGTERM/SIGINT graceful shutdown (STAB-04)
 
@@ -115,7 +115,7 @@
   2. Tests cover: JMAP auth flow, email send, HTTP 401/429/500/4xx error paths returning JSON, CalDAV concurrent fetch with one failing book, CardDAV CRUD round-trip, and MCP GraphQL resolver happy paths
   3. Tests live exclusively in `tests/` (top-level Cargo integration tests); no wiremock usage appears in `#[cfg(test)]` blocks inside `src/`
 **Plans**: 4 plans
-- [ ] 14-01-PLAN.md — AppContext foundation (OnceCell DAV, HMAC key, schema limits)
+- [x] 14-01-PLAN.md — AppContext foundation (OnceCell DAV, HMAC key, schema limits)
 - [ ] 14-02-PLAN.md — Migrate resolvers to AppContext (DAV sharing, HMAC tokens, STAB-07 audit)
 - [ ] 14-03-PLAN.md — markAsSpam HMAC confirmation gate (SEC-08)
 - [x] 14-04-PLAN.md — SIGTERM/SIGINT graceful shutdown (STAB-04)
@@ -132,7 +132,7 @@
 - [ ] 14-01-PLAN.md — AppContext foundation (OnceCell DAV, HMAC key, schema limits)
 - [ ] 14-02-PLAN.md — Migrate resolvers to AppContext (DAV sharing, HMAC tokens, STAB-07 audit)
 - [ ] 14-03-PLAN.md — markAsSpam HMAC confirmation gate (SEC-08)
-- [ ] 14-04-PLAN.md — SIGTERM/SIGINT graceful shutdown (STAB-04)
+- [x] 14-04-PLAN.md — SIGTERM/SIGINT graceful shutdown (STAB-04)
 
 ## Progress
 
@@ -151,7 +151,7 @@
 | 11. CLI Attendee Clearing Parity | v1.1 | 1/1 | Complete | 2026-04-03 |
 | 12. Foundation Safety | v1.2 | 4/4 | Complete   | 2026-04-04 |
 | 13. Security Hardening | v1.2 | 4/4 | Complete   | 2026-04-04 |
-| 14. MCP Layer Refactor | v1.2 | 3/4 | In Progress|  |
+| 14. MCP Layer Refactor | v1.2 | 4/4 | Complete   | 2026-04-04 |
 | 15. Performance | v1.2 | 0/? | Not started | - |
 | 16. Integration Test Coverage | v1.2 | 0/? | Not started | - |
 | 17. Quality Polish | v1.2 | 0/? | Not started | - |
