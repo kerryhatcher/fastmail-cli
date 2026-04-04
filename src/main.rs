@@ -24,11 +24,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Authenticate with Fastmail API token
-    Auth {
-        /// API token from Fastmail settings
-        token: String,
-    },
+    /// Authenticate with Fastmail API token (reads from FASTMAIL_API_TOKEN env var or stdin prompt)
+    Auth,
 
     /// List resources
     #[command(subcommand)]
@@ -664,7 +661,7 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        Commands::Auth { token } => commands::auth(&token).await,
+        Commands::Auth => commands::auth().await,
 
         Commands::List(cmd) => match cmd {
             ListCommands::Mailboxes => commands::list_mailboxes().await,
