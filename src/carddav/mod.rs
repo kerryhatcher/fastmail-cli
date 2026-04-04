@@ -6,6 +6,7 @@ use reqwest::{
     Client,
     header::{ETAG, HeaderMap, IF_MATCH, IF_NONE_MATCH, LOCATION},
 };
+use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, instrument};
 // Uuid is imported for use by callers (Phase 3: create_contact will call Uuid::new_v4())
@@ -76,12 +77,16 @@ pub struct CardDavClient {
 }
 
 impl CardDavClient {
-    pub fn new(username: String, app_password: String) -> Self {
-        Self {
-            client: Client::new(),
+    pub fn new(username: String, app_password: String) -> Result<Self> {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .map_err(|e| Error::Config(format!("HTTP client builder failed: {e}")))?;
+        Ok(Self {
+            client,
             username,
             app_password,
-        }
+        })
     }
 
     /// Discover address books for the user
@@ -923,7 +928,7 @@ mod tests {
 
     #[test]
     fn test_parse_contacts_response_extracts_href_etag() {
-        let client = CardDavClient::new("testuser".to_string(), "testpass".to_string());
+        let client = CardDavClient::new("testuser".to_string(), "testpass".to_string()).expect("test client");
         let xml = r#"<?xml version="1.0" encoding="utf-8"?>
 <d:multistatus xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">
   <d:response>
@@ -1455,5 +1460,11 @@ END:VCARD</card:address-data>
         let parsed = parse_vcard(&serialized, None, None).unwrap();
         assert_eq!(parsed.name, contact.name);
         assert_eq!(parsed.organization, contact.organization);
+    }
+
+    #[test]
+    fn test_carddav_client_new_returns_ok() {
+        let result = CardDavClient::new("user@example.com".to_string(), "pass".to_string());
+        assert!(result.is_ok());
     }
 }

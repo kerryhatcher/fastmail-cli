@@ -46,7 +46,7 @@ fn calendar_client() -> crate::error::Result<CalDavClient> {
     let config = Config::load()?;
     let username = config.get_username()?;
     let app_password = config.get_app_password()?;
-    Ok(CalDavClient::new(username, app_password))
+    Ok(CalDavClient::new(username, app_password)?)
 }
 
 fn normalize_event_datetime(

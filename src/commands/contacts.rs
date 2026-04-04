@@ -32,7 +32,7 @@ fn contact_client() -> crate::error::Result<CardDavClient> {
     let config = Config::load()?;
     let username = config.get_username()?;
     let app_password = config.get_app_password()?;
-    Ok(CardDavClient::new(username, app_password))
+    CardDavClient::new(username, app_password)
 }
 
 pub fn build_contact(input: ContactInput) -> Contact {

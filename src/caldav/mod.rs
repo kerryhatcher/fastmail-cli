@@ -96,12 +96,16 @@ pub struct CalDavClient {
 }
 
 impl CalDavClient {
-    pub fn new(username: String, app_password: String) -> Self {
-        Self {
-            client: Client::new(),
+    pub fn new(username: String, app_password: String) -> Result<Self> {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| Error::Config(format!("HTTP client builder failed: {e}")))?;
+        Ok(Self {
+            client,
             username,
             app_password,
-        }
+        })
     }
 
     #[instrument(skip(self))]
@@ -1897,5 +1901,11 @@ mod tests {
         let expanded = expand_event_for_range(&event, range_start, range_end);
 
         assert!(expanded.is_empty());
+    }
+
+    #[test]
+    fn test_caldav_client_new_returns_ok() {
+        let result = CalDavClient::new("user@example.com".to_string(), "pass".to_string());
+        assert!(result.is_ok());
     }
 }

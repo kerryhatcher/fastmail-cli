@@ -209,7 +209,8 @@ impl QueryRoot {
             )
         })?;
 
-        let client = crate::carddav::CardDavClient::new(username, app_password);
+        let client = crate::carddav::CardDavClient::new(username, app_password)
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
         let contacts = client.search_contacts(&query).await?;
         Ok(contacts.into_iter().map(GqlContact::from).collect())
     }
@@ -226,7 +227,8 @@ impl QueryRoot {
             )
         })?;
 
-        let client = crate::caldav::CalDavClient::new(username, app_password);
+        let client = crate::caldav::CalDavClient::new(username, app_password)
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
         let calendars = client.list_calendars().await?;
         Ok(calendars.into_iter().map(Into::into).collect())
     }
