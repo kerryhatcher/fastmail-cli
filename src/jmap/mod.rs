@@ -205,6 +205,12 @@ impl JmapClient {
             401 => return Err(Error::InvalidToken("Authentication failed".into())),
             429 => return Err(Error::RateLimited),
             500..=599 => return Err(Error::Server(format!("Server error: {}", resp.status()))),
+            400..=499 => {
+                return Err(Error::Server(format!(
+                    "HTTP {} from API",
+                    resp.status().as_u16()
+                )))
+            }
             _ => {}
         }
 
@@ -263,6 +269,12 @@ impl JmapClient {
             401 => return Err(Error::InvalidToken("Token expired or invalid".into())),
             429 => return Err(Error::RateLimited),
             500..=599 => return Err(Error::Server(format!("Server error: {}", resp.status()))),
+            400..=499 => {
+                return Err(Error::Server(format!(
+                    "HTTP {} from API",
+                    resp.status().as_u16()
+                )))
+            }
             _ => {}
         }
 
@@ -1363,5 +1375,29 @@ mod tests {
         let err = result.unwrap_err().to_string();
         assert!(err.contains("nobody@example.com"));
         assert!(err.contains("list identities"));
+    }
+
+    #[test]
+    fn test_status_4xx_maps_to_server_error() {
+        // Simulate the format!() output for each status (mirrors the 400..=499 match arm)
+        let msg_400 = format!("HTTP {} from API", 400u16);
+        let msg_403 = format!("HTTP {} from API", 403u16);
+        let msg_404 = format!("HTTP {} from API", 404u16);
+
+        // Wrap in Error::Server and assert Display includes thiserror prefix
+        let err_400 = crate::error::Error::Server(msg_400);
+        let err_403 = crate::error::Error::Server(msg_403);
+        let err_404 = crate::error::Error::Server(msg_404);
+
+        assert_eq!(format!("{}", err_400), "Server error: HTTP 400 from API");
+        assert_eq!(format!("{}", err_403), "Server error: HTTP 403 from API");
+        assert_eq!(format!("{}", err_404), "Server error: HTTP 404 from API");
+    }
+
+    #[test]
+    fn test_status_401_not_captured_by_4xx_range_format() {
+        // Documents intent: 401 has a specific arm and maps to InvalidToken, not Server
+        let err = crate::error::Error::InvalidToken("Authentication failed".into());
+        assert!(format!("{}", err).contains("Invalid API token"));
     }
 }

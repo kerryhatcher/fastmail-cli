@@ -655,7 +655,7 @@ enum EventsCommands {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .with_target(false)
@@ -749,8 +749,8 @@ async fn main() {
 
         Commands::Spam { email_id, yes } => {
             if !yes {
-                eprintln!("Mark email {} as spam? Use -y to confirm.", email_id);
-                std::process::exit(1);
+                Output::<()>::error("Confirmation required: pass -y to mark email as spam").print();
+                anyhow::bail!("confirmation required");
             }
             commands::mark_spam(&email_id).await
         }
@@ -831,7 +831,7 @@ async fn main() {
                 "fastmail-cli",
                 &mut io::stdout(),
             );
-            return;
+            Ok(())
         }
 
         Commands::Masked(cmd) => match cmd {
@@ -852,8 +852,8 @@ async fn main() {
             MaskedCommands::Disable { id } => commands::disable_masked_email(&id).await,
             MaskedCommands::Delete { id, yes } => {
                 if !yes {
-                    eprintln!("Delete masked email {}? Use -y to confirm.", id);
-                    std::process::exit(1);
+                    Output::<()>::error("Confirmation required: pass -y to delete masked email").print();
+                    anyhow::bail!("confirmation required");
                 }
                 commands::delete_masked_email(&id).await
             }
@@ -912,11 +912,8 @@ async fn main() {
                 yes,
             } => {
                 if !(confirm || yes) {
-                    eprintln!(
-                        "Delete contact {}? Re-run with --confirm or --yes to proceed.",
-                        contact_id
-                    );
-                    std::process::exit(1);
+                    Output::<()>::error("Confirmation required: pass --confirm to delete contact").print();
+                    anyhow::bail!("confirmation required");
                 }
                 commands::delete_contact(&contact_id).await
             }
@@ -938,11 +935,8 @@ async fn main() {
                 yes,
             } => {
                 if !(confirm || yes) {
-                    eprintln!(
-                        "Delete calendar {}? Re-run with --confirm or --yes to proceed.",
-                        calendar_id
-                    );
-                    std::process::exit(1);
+                    Output::<()>::error("Confirmation required: pass --confirm to delete calendar").print();
+                    anyhow::bail!("confirmation required");
                 }
                 commands::delete_calendar(&calendar_id).await
             }
@@ -1088,11 +1082,8 @@ async fn main() {
                 yes,
             } => {
                 if !(confirm || yes) {
-                    eprintln!(
-                        "Delete event {}? Re-run with --confirm or --yes to proceed.",
-                        event_id
-                    );
-                    std::process::exit(1);
+                    Output::<()>::error("Confirmation required: pass --confirm to delete event").print();
+                    anyhow::bail!("confirmation required");
                 }
                 commands::delete_event(&event_id, calendar.as_deref()).await
             }
@@ -1105,6 +1096,8 @@ async fn main() {
         Output::<()>::error(e.to_string()).print();
         std::process::exit(1);
     }
+
+    Ok(())
 }
 
 #[cfg(test)]
