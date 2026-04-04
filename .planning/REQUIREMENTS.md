@@ -75,7 +75,40 @@
 
 ## Traceability
 
-(Filled in by roadmap step — each REQ-ID will be mapped to exactly one phase.)
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| SEC-01 | Phase 12 | Pending |
+| SEC-02 | Phase 13 | Pending |
+| SEC-03 | Phase 13 | Pending |
+| SEC-04 | Phase 13 | Pending |
+| SEC-05 | Phase 14 | Pending |
+| SEC-06 | Phase 12 | Pending |
+| SEC-07 | Phase 14 | Pending |
+| SEC-08 | Phase 14 | Pending |
+| SEC-09 | Phase 13 | Pending |
+| STAB-01 | Phase 12 | Pending |
+| STAB-02 | Phase 12 | Pending |
+| STAB-03 | Phase 12 | Pending |
+| STAB-04 | Phase 14 | Pending |
+| STAB-05 | Phase 17 | Pending |
+| STAB-06 | Phase 15 | Pending |
+| STAB-07 | Phase 14 | Pending |
+| STAB-08 | Phase 17 | Pending |
+| STAB-09 | Phase 12 | Pending |
+| STAB-10 | Phase 12 | Pending |
+| PERF-01 | Phase 15 | Pending |
+| PERF-02 | Phase 15 | Pending |
+| PERF-03 | Phase 14 | Pending |
+| PERF-04 | Phase 15 | Pending |
+| PERF-05 | Phase 15 | Pending |
+| PERF-06 | Phase 15 | Pending |
+| PERF-07 | Phase 15 | Pending |
+| PERF-08 | Phase 15 | Pending |
+| PERF-09 | Phase 15 | Pending |
+| PERF-10 | Phase 15 | Pending |
+| PERF-11 | Phase 15 | Pending |
+| TEST-01 | Phase 16 | Pending |
+| QUAL-01 | Phase 17 | Pending |
 
 ---
 *Last updated: 2026-04-04*
