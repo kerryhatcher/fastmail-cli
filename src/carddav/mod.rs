@@ -1467,4 +1467,104 @@ END:VCARD</card:address-data>
         let result = CardDavClient::new("user@example.com".to_string(), "pass".to_string());
         assert!(result.is_ok());
     }
+
+    // ===== SEC-02: EMAIL/TEL injection prevention tests =====
+
+    #[test]
+    fn test_vcard_email_newline_escaped() {
+        let contact = Contact {
+            id: "u1".into(),
+            name: "Test".into(),
+            emails: vec![ContactEmail {
+                label: None,
+                email: "a@b.com\nFN:injected".into(),
+            }],
+            phones: vec![],
+            organization: None,
+            title: None,
+            notes: None,
+            address: None,
+            href: None,
+            etag: None,
+        };
+        let vcard = serialize_vcard(&contact);
+        assert!(
+            vcard.contains(r"EMAIL:a@b.com\nFN:injected"),
+            "expected escaped \\n, got: {vcard}"
+        );
+        // No raw injection: there must be no property line starting with "FN:injected"
+        let fn_injected_lines = vcard
+            .lines()
+            .filter(|l| l.trim_start().starts_with("FN:injected"))
+            .count();
+        assert_eq!(fn_injected_lines, 0, "injection not blocked: {vcard}");
+    }
+
+    #[test]
+    fn test_vcard_email_semicolon_escaped() {
+        let contact = Contact {
+            id: "u1".into(),
+            name: "T".into(),
+            emails: vec![ContactEmail {
+                label: None,
+                email: "a;b@c.com".into(),
+            }],
+            phones: vec![],
+            organization: None,
+            title: None,
+            notes: None,
+            address: None,
+            href: None,
+            etag: None,
+        };
+        let vcard = serialize_vcard(&contact);
+        assert!(vcard.contains(r"EMAIL:a\;b@c.com"), "got: {vcard}");
+    }
+
+    #[test]
+    fn test_vcard_tel_special_chars_escaped() {
+        let contact = Contact {
+            id: "u1".into(),
+            name: "T".into(),
+            emails: vec![],
+            phones: vec![ContactPhone {
+                label: None,
+                number: r";,\n".into(),
+            }],
+            organization: None,
+            title: None,
+            notes: None,
+            address: None,
+            href: None,
+            etag: None,
+        };
+        let vcard = serialize_vcard(&contact);
+        // original: literal chars ; , \ n -> escape_value produces \; \, \\ n
+        assert!(vcard.contains(r"TEL:\;\,\\n"), "got: {vcard}");
+    }
+
+    #[test]
+    fn test_vcard_label_injection_blocked() {
+        let contact = Contact {
+            id: "u1".into(),
+            name: "T".into(),
+            emails: vec![ContactEmail {
+                label: Some("HOME\nMALICIOUS:pwn".into()),
+                email: "a@b.com".into(),
+            }],
+            phones: vec![],
+            organization: None,
+            title: None,
+            notes: None,
+            address: None,
+            href: None,
+            etag: None,
+        };
+        let vcard = serialize_vcard(&contact);
+        let malicious_lines = vcard
+            .lines()
+            .filter(|l| l.trim_start().starts_with("MALICIOUS:"))
+            .count();
+        assert_eq!(malicious_lines, 0, "label injection not blocked: {vcard}");
+    }
 }
