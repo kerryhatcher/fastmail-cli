@@ -35,7 +35,7 @@
 
 **Milestone Goal:** Close all 32 in-scope codebase-review findings — security fixes, stability guards, performance wins, and integration test coverage — without regressing any v1.0/v1.1 capability.
 
-- [ ] **Phase 12: Foundation Safety** - Establish the safe baseline: HTTP 4xx surfacing, DAV timeouts, JSON output contract, path traversal defense, secret redaction, and constructor hardening
+- [x] **Phase 12: Foundation Safety** - Establish the safe baseline: HTTP 4xx surfacing, DAV timeouts, JSON output contract, path traversal defense, secret redaction, and constructor hardening (completed 2026-04-04)
 - [ ] **Phase 13: Security Hardening** - Injection escaping for vCard/iCal serialization, URL encoding for blob download URLs, and auth token input documentation
 - [ ] **Phase 14: MCP Layer Refactor** - Atomic delivery: shared AppContext DAV client pool, nonce-bound confirmation tokens, GraphQL limits, signal handling, and mutex-narrowing
 - [ ] **Phase 15: Performance** - Concurrent DAV fetching, targeted UID REPORT lookup, allocation reductions across JMAP and MCP layers, optional kreuzberg feature flag
@@ -55,7 +55,7 @@
   4. Downloading an attachment whose server-supplied filename contains `../` writes only inside the user-specified output directory
   5. `Config` printed with `{:?}` shows `[REDACTED]` for `api_token` and `app_password`; `JmapClient::new()` returns `Result` rather than panicking
 **Plans**: 4 plans
-- [ ] 12-01-PLAN.md — Config secret redaction (SecretString) and parse-error recovery guidance
+- [x] 12-01-PLAN.md — Config secret redaction (SecretString) and parse-error recovery guidance
 - [x] 12-02-PLAN.md — DAV client 30s timeouts and attachment path-traversal defense
 - [x] 12-03-PLAN.md — JMAP 4xx catch-all and fallible JmapClient::new()
 - [x] 12-04-PLAN.md — Confirmation-guard JSON contract in src/main.rs
@@ -129,7 +129,7 @@
 | 9. MCP Calendar Surface & Live Validation | v1.1 | 1/1 | Complete | 2026-04-03 |
 | 10. Explicit Range Contract Closure | v1.1 | 1/1 | Complete | 2026-04-03 |
 | 11. CLI Attendee Clearing Parity | v1.1 | 1/1 | Complete | 2026-04-03 |
-| 12. Foundation Safety | v1.2 | 3/4 | In Progress|  |
+| 12. Foundation Safety | v1.2 | 4/4 | Complete   | 2026-04-04 |
 | 13. Security Hardening | v1.2 | 0/? | Not started | - |
 | 14. MCP Layer Refactor | v1.2 | 0/? | Not started | - |
 | 15. Performance | v1.2 | 0/? | Not started | - |

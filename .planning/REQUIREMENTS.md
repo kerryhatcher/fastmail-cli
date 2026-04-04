@@ -15,7 +15,7 @@
 - [ ] **SEC-03**: iCalendar attendee fields (`role`, `partstat`, `email`) and RRULE fields (`frequency`, `until`, `by_day`) are validated or escaped during serialization. *(finding #9)*
 - [ ] **SEC-04**: The `auth` command accepts the API token via stdin, environment variable, or interactive prompt — never via a positional CLI argument visible in `ps`/shell history. *(finding #10)*
 - [ ] **SEC-05**: MCP destructive-mutation confirmation tokens are bound to a per-process random nonce so they cannot be forged from known input parameters alone. *(finding #14)*
-- [ ] **SEC-06**: Config structs holding `api_token` and `app_password` never print secrets via `{:?}` — values are wrapped in `secrecy::SecretString` and redact to `[REDACTED]`. *(finding #15)*
+- [x] **SEC-06**: Config structs holding `api_token` and `app_password` never print secrets via `{:?}` — values are wrapped in `secrecy::SecretString` and redact to `[REDACTED]`. *(finding #15)*
 - [ ] **SEC-07**: The MCP GraphQL schema enforces depth and complexity limits to bound query cost. *(finding #24)*
 - [ ] **SEC-08**: The `markAsSpam` MCP mutation requires the same confirmation-token flow as other destructive mutations. *(finding #25)*
 - [ ] **SEC-09**: Blob-download URL template values are URL-encoded before insertion into JMAP download URLs. *(finding #30)*
@@ -31,7 +31,7 @@
 - [ ] **STAB-07**: The MCP `Mutex` guard on `JmapClient` is dropped before awaiting downstream I/O so concurrent GraphQL requests are not serialized. *(finding #26)*
 - [ ] **STAB-08**: Fallback contact IDs use a stable hasher rather than `DefaultHasher`, so IDs remain consistent across Rust versions. *(finding #27)*
 - [x] **STAB-09**: `JmapClient::new()` returns a `Result` instead of `.expect()`-panicking on builder failure. *(finding #32)*
-- [ ] **STAB-10**: Config corruption errors include guidance on how to recover (reset path, expected schema). *(finding #33)*
+- [x] **STAB-10**: Config corruption errors include guidance on how to recover (reset path, expected schema). *(finding #33)*
 
 ### Performance (PERF)
 
@@ -82,7 +82,7 @@
 | SEC-03 | Phase 13 | Pending |
 | SEC-04 | Phase 13 | Pending |
 | SEC-05 | Phase 14 | Pending |
-| SEC-06 | Phase 12 | Pending |
+| SEC-06 | Phase 12 | Complete |
 | SEC-07 | Phase 14 | Pending |
 | SEC-08 | Phase 14 | Pending |
 | SEC-09 | Phase 13 | Pending |
@@ -95,7 +95,7 @@
 | STAB-07 | Phase 14 | Pending |
 | STAB-08 | Phase 17 | Pending |
 | STAB-09 | Phase 12 | Complete |
-| STAB-10 | Phase 12 | Pending |
+| STAB-10 | Phase 12 | Complete |
 | PERF-01 | Phase 15 | Pending |
 | PERF-02 | Phase 15 | Pending |
 | PERF-03 | Phase 14 | Pending |
