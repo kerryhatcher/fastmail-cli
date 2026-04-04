@@ -54,7 +54,11 @@
   3. `CardDavClient` and `CalDavClient` respect a 30-second timeout; a hung server connection does not block indefinitely
   4. Downloading an attachment whose server-supplied filename contains `../` writes only inside the user-specified output directory
   5. `Config` printed with `{:?}` shows `[REDACTED]` for `api_token` and `app_password`; `JmapClient::new()` returns `Result` rather than panicking
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 12-01-PLAN.md — Config secret redaction (SecretString) and parse-error recovery guidance
+- [ ] 12-02-PLAN.md — DAV client 30s timeouts and attachment path-traversal defense
+- [ ] 12-03-PLAN.md — JMAP 4xx catch-all and fallible JmapClient::new()
+- [ ] 12-04-PLAN.md — Confirmation-guard JSON contract in src/main.rs
 
 ### Phase 13: Security Hardening
 **Goal**: All user-supplied string data is escaped or validated before being written into vCard and iCalendar wire format, blob download URLs are correctly percent-encoded, and the auth token input surface is documented for multi-user safety
