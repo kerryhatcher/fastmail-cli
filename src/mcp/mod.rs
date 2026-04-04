@@ -54,7 +54,7 @@ impl FastmailMcp {
             Err(_) => None,
         };
 
-        let schema = Arc::new(graphql::build_schema(jmap_client));
+        let schema = Arc::new(graphql::build_schema(graphql::AppContext::new(jmap_client)));
 
         Ok(Self {
             schema,
@@ -166,7 +166,8 @@ impl ServerHandler for FastmailMcp {
     }
 }
 
-/// Run the MCP server with stdio transport
+/// Run the MCP server with stdio transport.
+/// Handles SIGTERM and SIGINT (Ctrl+C) gracefully via rmcp's RunningServiceCancellationToken.
 pub async fn run_server() -> anyhow::Result<()> {
     use rmcp::{ServiceExt, transport::stdio};
 
@@ -176,10 +177,66 @@ pub async fn run_server() -> anyhow::Result<()> {
         .await
         .map_err(|e| anyhow::anyhow!("Failed to start MCP server: {}", e))?;
 
+    // CRITICAL (per RESEARCH.md Pitfall 2): extract cancellation token BEFORE
+    // calling waiting(), which consumes `server`.
+    let cancel_token = server.cancellation_token();
+
+    // Spawn signal handler task. On first SIGTERM/SIGINT, cancel the rmcp token,
+    // which causes waiting() to return QuitReason::Cancelled.
+    tokio::spawn(async move {
+        #[cfg(unix)]
+        {
+            use tokio::signal::unix::{SignalKind, signal};
+            let mut sigterm = match signal(SignalKind::terminate()) {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::debug!("Failed to install SIGTERM handler: {}", e);
+                    return;
+                }
+            };
+            tokio::select! {
+                _ = sigterm.recv() => {
+                    tracing::debug!("SIGTERM received — shutting down MCP server");
+                }
+                _ = tokio::signal::ctrl_c() => {
+                    tracing::debug!("SIGINT received — shutting down MCP server");
+                }
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            if let Err(e) = tokio::signal::ctrl_c().await {
+                tracing::debug!("Failed to install Ctrl+C handler: {}", e);
+                return;
+            }
+            tracing::debug!("Ctrl+C received — shutting down MCP server");
+        }
+        cancel_token.cancel();
+    });
+
     server
         .waiting()
         .await
         .map_err(|e| anyhow::anyhow!("MCP server error: {}", e))?;
 
+    tracing::debug!("MCP server exited cleanly");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn run_server_source_calls_cancellation_token_before_waiting() {
+        let source = include_str!("mod.rs");
+        let cancel_idx = source
+            .find(".cancellation_token()")
+            .expect("cancellation_token() must appear in run_server");
+        let waiting_idx = source
+            .find(".waiting()")
+            .expect(".waiting() must appear in run_server");
+        assert!(
+            cancel_idx < waiting_idx,
+            "cancellation_token() must be called BEFORE waiting() (per rmcp Pitfall 2)"
+        );
+    }
 }
