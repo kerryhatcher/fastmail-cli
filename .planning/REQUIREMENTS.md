@@ -25,7 +25,7 @@
 - [x] **STAB-01**: JMAP HTTP 4xx responses (e.g. 400, 403) produce a clear `Server` error with the status code, not a confusing JSON deserialization error. *(finding #1)*
 - [x] **STAB-02**: `CardDavClient` and `CalDavClient` set a 30-second HTTP timeout matching `JmapClient`, so hung server connections cannot block indefinitely. *(finding #2)*
 - [x] **STAB-03**: Confirmation-guard exit paths (spam, delete masked email, delete contact, delete calendar, delete event) emit a valid `Output::error(..)` JSON envelope instead of raw `eprintln!` + `process::exit(1)`. *(finding #11)*
-- [ ] **STAB-04**: The MCP server handles SIGINT/SIGTERM gracefully, flushing pending responses before exit (or documents that `rmcp` handles it). *(finding #17)*
+- [x] **STAB-04**: The MCP server handles SIGINT/SIGTERM gracefully, flushing pending responses before exit (or documents that `rmcp` handles it). *(finding #17)*
 - [ ] **STAB-05**: `download.rs` removes the fragile triple-`unwrap()` pattern in favor of a `let Some(..) else { return }` guard. *(finding #18)*
 - [ ] **STAB-06**: `search_contacts()` tolerates per-address-book failures — one failing book logs and continues instead of aborting the entire search. *(finding #19)*
 - [ ] **STAB-07**: The MCP `Mutex` guard on `JmapClient` is dropped before awaiting downstream I/O so concurrent GraphQL requests are not serialized. *(finding #26)*
@@ -89,7 +89,7 @@
 | STAB-01 | Phase 12 | Complete |
 | STAB-02 | Phase 12 | Complete |
 | STAB-03 | Phase 12 | Complete |
-| STAB-04 | Phase 14 | Pending |
+| STAB-04 | Phase 14 | Complete |
 | STAB-05 | Phase 17 | Pending |
 | STAB-06 | Phase 15 | Pending |
 | STAB-07 | Phase 14 | Pending |

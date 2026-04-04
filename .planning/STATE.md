@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Hardening & Quality
-status: verifying
-stopped_at: Completed 13-04-PLAN.md
-last_updated: "2026-04-04T23:08:18.706Z"
+status: executing
+stopped_at: Completed 14-04-PLAN.md
+last_updated: "2026-04-04T23:42:38.957Z"
 last_activity: 2026-04-04
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 8
-  completed_plans: 8
+  total_plans: 12
+  completed_plans: 9
   percent: 0
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-04)
 
 **Core value:** Users can manage Fastmail data without leaving the terminal or AI assistant, with automation-friendly APIs that stay faithful to Fastmail's actual protocol boundaries
-**Current focus:** Phase 13 — security-hardening
+**Current focus:** Phase 14 — mcp-layer-refactor
 
 ## Current Position
 
-Phase: 13 (security-hardening) — EXECUTING
-Plan: 4 of 4
-Status: Phase complete — ready for verification
+Phase: 14 (mcp-layer-refactor) — EXECUTING
+Plan: 2 of 4
+Status: Ready to execute
 Last activity: 2026-04-04
 
 Progress: [░░░░░░░░░░] 0%
@@ -55,6 +55,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 13-security-hardening P02 | 8min | 2 tasks | 1 files |
 | Phase 13-security-hardening P03 | 15 | 2 tasks | 3 files |
 | Phase 13 P04 | 212s | 2 tasks | 4 files |
+| Phase 14 P04 | 147s | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -77,6 +78,8 @@ Pending user decision before Phase 12 planning:
 - [Phase 13-security-hardening]: SEC-09: NON_ALPHANUMERIC applied to {blobId} and {name} only; {accountId} and {type} left unencoded (accountId always safe, type hardcoded MIME)
 - [Phase 13]: Used std::io::stdin().is_terminal() instead of rpassword — terminal hiding via read -rs shell pattern is sufficient per D-10
 - [Phase 13]: resolve_token() uses Output::error+bail pattern for non-interactive failure, consistent with existing command handlers
+- [Phase 14]: No tokio::time::timeout wrapper around waiting() — rmcp cancellation already drains in-flight requests cleanly
+- [Phase 14]: [Phase 14-04]: SIGTERM handler cfg-gated to unix targets; ctrl_c fallback for non-unix cross-platform support
 
 ### Pending Todos
 
@@ -89,6 +92,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-04T23:08:18.704Z
-Stopped at: Completed 13-04-PLAN.md
+Last session: 2026-04-04T23:42:38.954Z
+Stopped at: Completed 14-04-PLAN.md
 Resume file: None
