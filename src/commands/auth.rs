@@ -3,7 +3,7 @@ use crate::jmap::JmapClient;
 use crate::models::Output;
 
 pub async fn auth(token: &str) -> anyhow::Result<()> {
-    let mut client = JmapClient::new(token.to_string());
+    let mut client = JmapClient::new(token.to_string())?;
     let session = client.authenticate().await?;
 
     let mut config = Config::load()?;

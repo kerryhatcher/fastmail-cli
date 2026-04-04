@@ -30,7 +30,7 @@ pub struct JmapClient {
 pub async fn authenticated_client() -> crate::error::Result<JmapClient> {
     let config = crate::config::Config::load()?;
     let token = config.get_token()?;
-    let mut client = JmapClient::new(token);
+    let mut client = JmapClient::new(token)?;
     client.authenticate().await?;
     Ok(client)
 }
@@ -176,19 +176,18 @@ fn pick_identity(identities: Vec<Identity>, from: Option<&str>) -> Result<Identi
 }
 
 impl JmapClient {
-    pub fn new(token: String) -> Self {
+    pub fn new(token: String) -> Result<Self> {
         let client = Client::builder()
             .timeout(TIMEOUT)
             .build()
-            .expect("Failed to build HTTP client");
-
-        Self {
+            .map_err(|e| Error::Config(format!("HTTP client builder failed: {e}")))?;
+        Ok(Self {
             client,
             token,
             session: None,
             available_capabilities: Vec::new(),
             cached_mailboxes: None,
-        }
+        })
     }
 
     #[instrument(skip(self))]
@@ -1259,7 +1258,7 @@ mod tests {
 
     #[test]
     fn test_require_capability_succeeds_when_present() {
-        let mut client = JmapClient::new("test-token".to_string());
+        let mut client = JmapClient::new("test-token".to_string()).expect("test client");
         client.session = Some(create_test_session(vec![
             "urn:ietf:params:jmap:core",
             "urn:ietf:params:jmap:mail",
@@ -1275,7 +1274,7 @@ mod tests {
 
     #[test]
     fn test_require_capability_fails_when_missing() {
-        let mut client = JmapClient::new("test-token".to_string());
+        let mut client = JmapClient::new("test-token".to_string()).expect("test client");
         client.session = Some(create_test_session(vec![
             "urn:ietf:params:jmap:core",
             "urn:ietf:params:jmap:mail",
@@ -1291,7 +1290,7 @@ mod tests {
 
     #[test]
     fn test_require_capability_fails_when_no_session() {
-        let client = JmapClient::new("test-token".to_string());
+        let client = JmapClient::new("test-token".to_string()).expect("test client");
 
         let result = client.require_capability("urn:ietf:params:jmap:submission", "Email sending");
         assert!(result.is_err());
@@ -1303,7 +1302,7 @@ mod tests {
 
     #[test]
     fn test_require_capability_works_for_masked_email() {
-        let mut client = JmapClient::new("test-token".to_string());
+        let mut client = JmapClient::new("test-token".to_string()).expect("test client");
         client.session = Some(create_test_session(vec![
             "urn:ietf:params:jmap:core",
             "urn:ietf:params:jmap:mail",

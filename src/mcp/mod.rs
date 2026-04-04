@@ -47,7 +47,7 @@ impl FastmailMcp {
         let config = Config::load()?;
         let jmap_client = match config.get_token() {
             Ok(token) => {
-                let mut client = JmapClient::new(token);
+                let mut client = JmapClient::new(token)?;
                 client.authenticate().await?;
                 Some(Arc::new(Mutex::new(client)))
             }
