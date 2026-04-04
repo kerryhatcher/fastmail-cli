@@ -14,9 +14,9 @@
 - [x] **SEC-02**: vCard EMAIL/TEL labels and values are escaped/validated so malicious labels cannot inject additional vCard properties. *(finding #8)*
 - [x] **SEC-03**: iCalendar attendee fields (`role`, `partstat`, `email`) and RRULE fields (`frequency`, `until`, `by_day`) are validated or escaped during serialization. *(finding #9)*
 - [x] **SEC-04**: The `auth` command accepts the API token via stdin, environment variable, or interactive prompt — never via a positional CLI argument visible in `ps`/shell history. *(finding #10)*
-- [ ] **SEC-05**: MCP destructive-mutation confirmation tokens are bound to a per-process random nonce so they cannot be forged from known input parameters alone. *(finding #14)*
+- [x] **SEC-05**: MCP destructive-mutation confirmation tokens are bound to a per-process random nonce so they cannot be forged from known input parameters alone. *(finding #14)*
 - [x] **SEC-06**: Config structs holding `api_token` and `app_password` never print secrets via `{:?}` — values are wrapped in `secrecy::SecretString` and redact to `[REDACTED]`. *(finding #15)*
-- [ ] **SEC-07**: The MCP GraphQL schema enforces depth and complexity limits to bound query cost. *(finding #24)*
+- [x] **SEC-07**: The MCP GraphQL schema enforces depth and complexity limits to bound query cost. *(finding #24)*
 - [ ] **SEC-08**: The `markAsSpam` MCP mutation requires the same confirmation-token flow as other destructive mutations. *(finding #25)*
 - [x] **SEC-09**: Blob-download URL template values are URL-encoded before insertion into JMAP download URLs. *(finding #30)*
 
@@ -37,7 +37,7 @@
 
 - [ ] **PERF-01**: `list_events()` and `search_contacts()` fetch from multiple calendars/address books concurrently with partial-failure tolerance, not sequentially. *(finding #4)*
 - [ ] **PERF-02**: `get_event_by_id()` uses a targeted CalDAV REPORT (or at least a default time range) instead of fetching all events from every calendar. *(finding #5)*
-- [ ] **PERF-03**: MCP requests reuse shared `CardDavClient`/`CalDavClient` instances via `AppContext` instead of recreating them per GraphQL request. *(finding #6)*
+- [x] **PERF-03**: MCP requests reuse shared `CardDavClient`/`CalDavClient` instances via `AppContext` instead of recreating them per GraphQL request. *(finding #6)*
 - [ ] **PERF-04**: Blob downloads avoid the double-allocation by returning/consuming `bytes::Bytes` instead of `Vec<u8>`. *(finding #12)*
 - [ ] **PERF-05**: `parse_response` consumes owned `serde_json::Value` instead of cloning the entire response subtree before deserializing. *(finding #13)*
 - [ ] **PERF-06**: `kreuzberg` with `bundled-pdfium` is gated behind an optional cargo feature so the default binary is ~10–20MB smaller. *(finding #16)*
@@ -81,9 +81,9 @@
 | SEC-02 | Phase 13 | Complete |
 | SEC-03 | Phase 13 | Complete |
 | SEC-04 | Phase 13 | Complete |
-| SEC-05 | Phase 14 | Pending |
+| SEC-05 | Phase 14 | Complete |
 | SEC-06 | Phase 12 | Complete |
-| SEC-07 | Phase 14 | Pending |
+| SEC-07 | Phase 14 | Complete |
 | SEC-08 | Phase 14 | Pending |
 | SEC-09 | Phase 13 | Complete |
 | STAB-01 | Phase 12 | Complete |
@@ -98,7 +98,7 @@
 | STAB-10 | Phase 12 | Complete |
 | PERF-01 | Phase 15 | Pending |
 | PERF-02 | Phase 15 | Pending |
-| PERF-03 | Phase 14 | Pending |
+| PERF-03 | Phase 14 | Complete |
 | PERF-04 | Phase 15 | Pending |
 | PERF-05 | Phase 15 | Pending |
 | PERF-06 | Phase 15 | Pending |

@@ -86,7 +86,7 @@
   4. `markAsSpam` requires the same nonce-bound confirmation token as `deleteContact`, `deleteCalendar`, and `deleteEvent`
   5. Sending SIGTERM to the MCP server process results in a clean exit; no pending response is silently dropped
 **Plans**: 4 plans
-- [ ] 14-01-PLAN.md — AppContext foundation (OnceCell DAV, HMAC key, schema limits)
+- [x] 14-01-PLAN.md — AppContext foundation (OnceCell DAV, HMAC key, schema limits)
 - [ ] 14-02-PLAN.md — Migrate resolvers to AppContext (DAV sharing, HMAC tokens, STAB-07 audit)
 - [ ] 14-03-PLAN.md — markAsSpam HMAC confirmation gate (SEC-08)
 - [x] 14-04-PLAN.md — SIGTERM/SIGINT graceful shutdown (STAB-04)
@@ -104,7 +104,7 @@
 - [ ] 14-01-PLAN.md — AppContext foundation (OnceCell DAV, HMAC key, schema limits)
 - [ ] 14-02-PLAN.md — Migrate resolvers to AppContext (DAV sharing, HMAC tokens, STAB-07 audit)
 - [ ] 14-03-PLAN.md — markAsSpam HMAC confirmation gate (SEC-08)
-- [ ] 14-04-PLAN.md — SIGTERM/SIGINT graceful shutdown (STAB-04)
+- [x] 14-04-PLAN.md — SIGTERM/SIGINT graceful shutdown (STAB-04)
 
 ### Phase 16: Integration Test Coverage
 **Goal**: The JMAP send, auth, and error-path behaviors, CalDAV concurrent fetch with partial-failure tolerance, and CardDAV CRUD flows are verifiable via a wiremock-based integration test suite that runs without a live Fastmail account
@@ -151,7 +151,7 @@
 | 11. CLI Attendee Clearing Parity | v1.1 | 1/1 | Complete | 2026-04-03 |
 | 12. Foundation Safety | v1.2 | 4/4 | Complete   | 2026-04-04 |
 | 13. Security Hardening | v1.2 | 4/4 | Complete   | 2026-04-04 |
-| 14. MCP Layer Refactor | v1.2 | 1/4 | In Progress|  |
+| 14. MCP Layer Refactor | v1.2 | 2/4 | In Progress|  |
 | 15. Performance | v1.2 | 0/? | Not started | - |
 | 16. Integration Test Coverage | v1.2 | 0/? | Not started | - |
 | 17. Quality Polish | v1.2 | 0/? | Not started | - |

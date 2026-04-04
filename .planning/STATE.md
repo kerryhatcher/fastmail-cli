@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Hardening & Quality
 status: executing
-stopped_at: Completed 14-04-PLAN.md
-last_updated: "2026-04-04T23:42:38.957Z"
+stopped_at: Completed 14-01-PLAN.md
+last_updated: "2026-04-04T23:44:08.781Z"
 last_activity: 2026-04-04
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 12
-  completed_plans: 9
+  completed_plans: 10
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-04)
 ## Current Position
 
 Phase: 14 (mcp-layer-refactor) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-04-04
 
@@ -56,6 +56,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 13-security-hardening P03 | 15 | 2 tasks | 3 files |
 | Phase 13 P04 | 212s | 2 tasks | 4 files |
 | Phase 14 P04 | 147s | 1 tasks | 1 files |
+| Phase 14 P01 | 212s | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -80,6 +81,9 @@ Pending user decision before Phase 12 planning:
 - [Phase 13]: resolve_token() uses Output::error+bail pattern for non-interactive failure, consistent with existing command handlers
 - [Phase 14]: No tokio::time::timeout wrapper around waiting() — rmcp cancellation already drains in-flight requests cleanly
 - [Phase 14]: [Phase 14-04]: SIGTERM handler cfg-gated to unix targets; ctrl_c fallback for non-unix cross-platform support
+- [Phase 14]: Used rand_core::TryRngCore::try_fill_bytes (not fill_bytes) for rand_core 0.9 OsRng - CONTEXT.md D-06 had wrong method name
+- [Phase 14]: Applied #[allow(dead_code)] on AppContext struct+impl to suppress forward-declared API warnings until plans 02-04 use them
+- [Phase 14]: Used .limit_depth(5).limit_complexity(200) in build_schema; injected JmapContext shim alongside AppContext for unmigrated resolvers (TODO 14-02)
 
 ### Pending Todos
 
@@ -92,6 +96,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-04T23:42:38.954Z
-Stopped at: Completed 14-04-PLAN.md
+Last session: 2026-04-04T23:44:08.779Z
+Stopped at: Completed 14-01-PLAN.md
 Resume file: None
