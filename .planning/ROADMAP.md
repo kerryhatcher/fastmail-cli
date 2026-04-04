@@ -56,9 +56,9 @@
   5. `Config` printed with `{:?}` shows `[REDACTED]` for `api_token` and `app_password`; `JmapClient::new()` returns `Result` rather than panicking
 **Plans**: 4 plans
 - [ ] 12-01-PLAN.md — Config secret redaction (SecretString) and parse-error recovery guidance
-- [ ] 12-02-PLAN.md — DAV client 30s timeouts and attachment path-traversal defense
-- [ ] 12-03-PLAN.md — JMAP 4xx catch-all and fallible JmapClient::new()
-- [ ] 12-04-PLAN.md — Confirmation-guard JSON contract in src/main.rs
+- [x] 12-02-PLAN.md — DAV client 30s timeouts and attachment path-traversal defense
+- [x] 12-03-PLAN.md — JMAP 4xx catch-all and fallible JmapClient::new()
+- [x] 12-04-PLAN.md — Confirmation-guard JSON contract in src/main.rs
 
 ### Phase 13: Security Hardening
 **Goal**: All user-supplied string data is escaped or validated before being written into vCard and iCalendar wire format, blob download URLs are correctly percent-encoded, and the auth token input surface is documented for multi-user safety
@@ -129,7 +129,7 @@
 | 9. MCP Calendar Surface & Live Validation | v1.1 | 1/1 | Complete | 2026-04-03 |
 | 10. Explicit Range Contract Closure | v1.1 | 1/1 | Complete | 2026-04-03 |
 | 11. CLI Attendee Clearing Parity | v1.1 | 1/1 | Complete | 2026-04-03 |
-| 12. Foundation Safety | v1.2 | 0/? | Not started | - |
+| 12. Foundation Safety | v1.2 | 3/4 | In Progress|  |
 | 13. Security Hardening | v1.2 | 0/? | Not started | - |
 | 14. MCP Layer Refactor | v1.2 | 0/? | Not started | - |
 | 15. Performance | v1.2 | 0/? | Not started | - |
