@@ -50,6 +50,10 @@ tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 roxmltree = "0.21.1"
 uuid = { version = "1", features = ["v4"] }
 percent-encoding = "2.3"
+hmac = "0.12"
+sha2 = "0.10"
+rand_core = { version = "0.9", features = ["os_rng"] }
+tokio-util = { version = "0.7", features = ["rt"] }
 
 [profile.release]
 strip = true
