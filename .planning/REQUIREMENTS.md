@@ -1,0 +1,81 @@
+# Milestone v1.2 Requirements: Hardening & Quality
+
+**Source:** `CODEBASE-REVIEW.md` (33 findings, 32 in scope; #23 deferred to v1.3).
+
+**Goal:** Close all remaining findings across security, stability, performance, testing, and code quality without regressing any shipped v1.0/v1.1 capability.
+
+---
+
+## Active Requirements
+
+### Security (SEC)
+
+- [ ] **SEC-01**: Attachment downloads never write outside the user-specified output directory, even when the server provides a path-traversing filename. *(finding #3)*
+- [ ] **SEC-02**: vCard EMAIL/TEL labels and values are escaped/validated so malicious labels cannot inject additional vCard properties. *(finding #8)*
+- [ ] **SEC-03**: iCalendar attendee fields (`role`, `partstat`, `email`) and RRULE fields (`frequency`, `until`, `by_day`) are validated or escaped during serialization. *(finding #9)*
+- [ ] **SEC-04**: The `auth` command accepts the API token via stdin, environment variable, or interactive prompt — never via a positional CLI argument visible in `ps`/shell history. *(finding #10)*
+- [ ] **SEC-05**: MCP destructive-mutation confirmation tokens are bound to a per-process random nonce so they cannot be forged from known input parameters alone. *(finding #14)*
+- [ ] **SEC-06**: Config structs holding `api_token` and `app_password` never print secrets via `{:?}` — values are wrapped in `secrecy::SecretString` and redact to `[REDACTED]`. *(finding #15)*
+- [ ] **SEC-07**: The MCP GraphQL schema enforces depth and complexity limits to bound query cost. *(finding #24)*
+- [ ] **SEC-08**: The `markAsSpam` MCP mutation requires the same confirmation-token flow as other destructive mutations. *(finding #25)*
+- [ ] **SEC-09**: Blob-download URL template values are URL-encoded before insertion into JMAP download URLs. *(finding #30)*
+
+### Stability (STAB)
+
+- [ ] **STAB-01**: JMAP HTTP 4xx responses (e.g. 400, 403) produce a clear `Server` error with the status code, not a confusing JSON deserialization error. *(finding #1)*
+- [ ] **STAB-02**: `CardDavClient` and `CalDavClient` set a 30-second HTTP timeout matching `JmapClient`, so hung server connections cannot block indefinitely. *(finding #2)*
+- [ ] **STAB-03**: Confirmation-guard exit paths (spam, delete masked email, delete contact, delete calendar, delete event) emit a valid `Output::error(..)` JSON envelope instead of raw `eprintln!` + `process::exit(1)`. *(finding #11)*
+- [ ] **STAB-04**: The MCP server handles SIGINT/SIGTERM gracefully, flushing pending responses before exit (or documents that `rmcp` handles it). *(finding #17)*
+- [ ] **STAB-05**: `download.rs` removes the fragile triple-`unwrap()` pattern in favor of a `let Some(..) else { return }` guard. *(finding #18)*
+- [ ] **STAB-06**: `search_contacts()` tolerates per-address-book failures — one failing book logs and continues instead of aborting the entire search. *(finding #19)*
+- [ ] **STAB-07**: The MCP `Mutex` guard on `JmapClient` is dropped before awaiting downstream I/O so concurrent GraphQL requests are not serialized. *(finding #26)*
+- [ ] **STAB-08**: Fallback contact IDs use a stable hasher rather than `DefaultHasher`, so IDs remain consistent across Rust versions. *(finding #27)*
+- [ ] **STAB-09**: `JmapClient::new()` returns a `Result` instead of `.expect()`-panicking on builder failure. *(finding #32)*
+- [ ] **STAB-10**: Config corruption errors include guidance on how to recover (reset path, expected schema). *(finding #33)*
+
+### Performance (PERF)
+
+- [ ] **PERF-01**: `list_events()` and `search_contacts()` fetch from multiple calendars/address books concurrently with partial-failure tolerance, not sequentially. *(finding #4)*
+- [ ] **PERF-02**: `get_event_by_id()` uses a targeted CalDAV REPORT (or at least a default time range) instead of fetching all events from every calendar. *(finding #5)*
+- [ ] **PERF-03**: MCP requests reuse shared `CardDavClient`/`CalDavClient` instances via `AppContext` instead of recreating them per GraphQL request. *(finding #6)*
+- [ ] **PERF-04**: Blob downloads avoid the double-allocation by returning/consuming `bytes::Bytes` instead of `Vec<u8>`. *(finding #12)*
+- [ ] **PERF-05**: `parse_response` consumes owned `serde_json::Value` instead of cloning the entire response subtree before deserializing. *(finding #13)*
+- [ ] **PERF-06**: `kreuzberg` with `bundled-pdfium` is gated behind an optional cargo feature so the default binary is ~10–20MB smaller. *(finding #16)*
+- [ ] **PERF-07**: Mailbox cache returns `Arc<Vec<Mailbox>>` instead of cloning the vector per request. *(finding #20)*
+- [ ] **PERF-08**: `available_capabilities` is not cloned per JMAP request (reuses `Arc` or returns a reference). *(finding #21)*
+- [ ] **PERF-09**: MCP image resize uses `Triangle` or `CatmullRom` instead of `Lanczos3` to reduce CPU cost on attachment previews. *(finding #22)*
+- [ ] **PERF-10**: `GqlEmail` GraphQL resolvers stop cloning address vectors on every field resolution (`From`, `To`, `Cc`, `Bcc`, `ReplyTo`). *(finding #31)*
+- [ ] **PERF-11**: `tokio` is pulled in with a narrowed feature subset (~5 features) instead of `full`, reducing compile time. *(finding #29)*
+
+### Testing (TEST)
+
+- [ ] **TEST-01**: A wiremock-based integration test suite in `tests/` covers the JMAP request/response cycle, authentication flow, email send flow, GraphQL query/mutation resolvers, MCP server startup, CalDAV event CRUD HTTP interaction, and HTTP error paths (401, 429, 500, 4xx). *(finding #7)*
+
+### Code Quality (QUAL)
+
+- [ ] **QUAL-01**: Stale `#[allow(unused_imports)]` on actively-used imports is removed. *(finding #28)*
+
+---
+
+## Future Requirements (Deferred)
+
+- **v1.3 — Newtyped IDs** (finding #23): Introduce `EmailId`, `MailboxId`, `ContactHref`, `EventUid`, etc. as newtypes to replace stringly-typed IDs throughout. Deferred because it touches ~10 files as a mechanical refactor and would block concurrent work in shared files during v1.2.
+
+---
+
+## Out of Scope
+
+- **Newtyped ID refactor** (finding #23) — deferred to v1.3 as a dedicated milestone, not abandoned.
+- **Protocol-level replacements** — no switch from JMAP/CardDAV/CalDAV to alternative protocols.
+- **New user-facing features** — v1.2 is a quality milestone; feature work belongs in v1.3+.
+- **Fastmail API contract renegotiation** — wire behavior must remain compatible with existing v1.0/v1.1 validation.
+- **Breaking MCP confirmation-token format changes without a migration path** — SEC-05 must include a version prefix so existing MCP hosts do not fail mid-flow on server restart.
+
+---
+
+## Traceability
+
+(Filled in by roadmap step — each REQ-ID will be mapped to exactly one phase.)
+
+---
+*Last updated: 2026-04-04*
