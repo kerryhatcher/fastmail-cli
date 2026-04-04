@@ -85,7 +85,11 @@
   3. A GraphQL query with depth > 5 or complexity > 200 is rejected with a clear error before execution
   4. `markAsSpam` requires the same nonce-bound confirmation token as `deleteContact`, `deleteCalendar`, and `deleteEvent`
   5. Sending SIGTERM to the MCP server process results in a clean exit; no pending response is silently dropped
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 14-01-PLAN.md — AppContext foundation (OnceCell DAV, HMAC key, schema limits)
+- [ ] 14-02-PLAN.md — Migrate resolvers to AppContext (DAV sharing, HMAC tokens, STAB-07 audit)
+- [ ] 14-03-PLAN.md — markAsSpam HMAC confirmation gate (SEC-08)
+- [ ] 14-04-PLAN.md — SIGTERM/SIGINT graceful shutdown (STAB-04)
 
 ### Phase 15: Performance
 **Goal**: Multi-calendar and multi-address-book operations complete concurrently with partial-failure tolerance, single-event lookup no longer downloads the full event history, and memory allocations in the JMAP and MCP layers are reduced through Bytes, Arc, and owned-parse patterns
@@ -96,7 +100,11 @@
   2. `get_event_by_id` issues a UID-targeted CalDAV REPORT rather than fetching all events from every calendar
   3. `cargo build --no-default-features` succeeds and produces a binary without bundled pdfium; `cargo build` (default features) still includes document extraction
   4. Blob downloads return `bytes::Bytes` without a double-allocation; `parse_response` consumes owned JSON without cloning the response subtree
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 14-01-PLAN.md — AppContext foundation (OnceCell DAV, HMAC key, schema limits)
+- [ ] 14-02-PLAN.md — Migrate resolvers to AppContext (DAV sharing, HMAC tokens, STAB-07 audit)
+- [ ] 14-03-PLAN.md — markAsSpam HMAC confirmation gate (SEC-08)
+- [ ] 14-04-PLAN.md — SIGTERM/SIGINT graceful shutdown (STAB-04)
 
 ### Phase 16: Integration Test Coverage
 **Goal**: The JMAP send, auth, and error-path behaviors, CalDAV concurrent fetch with partial-failure tolerance, and CardDAV CRUD flows are verifiable via a wiremock-based integration test suite that runs without a live Fastmail account
@@ -106,7 +114,11 @@
   1. `cargo test` runs the integration suite without network access and all tests pass
   2. Tests cover: JMAP auth flow, email send, HTTP 401/429/500/4xx error paths returning JSON, CalDAV concurrent fetch with one failing book, CardDAV CRUD round-trip, and MCP GraphQL resolver happy paths
   3. Tests live exclusively in `tests/` (top-level Cargo integration tests); no wiremock usage appears in `#[cfg(test)]` blocks inside `src/`
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 14-01-PLAN.md — AppContext foundation (OnceCell DAV, HMAC key, schema limits)
+- [ ] 14-02-PLAN.md — Migrate resolvers to AppContext (DAV sharing, HMAC tokens, STAB-07 audit)
+- [ ] 14-03-PLAN.md — markAsSpam HMAC confirmation gate (SEC-08)
+- [ ] 14-04-PLAN.md — SIGTERM/SIGINT graceful shutdown (STAB-04)
 
 ### Phase 17: Quality Polish
 **Goal**: Fragile `unwrap()` patterns are replaced with `let-else` guards, contact fallback IDs use a stable hasher, image resize uses a faster filter, tokio pulls in only the features it needs, and stale allow attributes are removed
@@ -116,7 +128,11 @@
   1. `download.rs` has no triple-`unwrap()` chain; the file-name guard uses `let Some(..) else { return }`
   2. Contact fallback IDs are identical across Rust versions and builds (stable hasher, not `DefaultHasher`)
   3. `cargo clippy --all-targets --all-features` reports zero warnings; stale `#[allow(unused_imports)]` annotations on active imports are gone
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 14-01-PLAN.md — AppContext foundation (OnceCell DAV, HMAC key, schema limits)
+- [ ] 14-02-PLAN.md — Migrate resolvers to AppContext (DAV sharing, HMAC tokens, STAB-07 audit)
+- [ ] 14-03-PLAN.md — markAsSpam HMAC confirmation gate (SEC-08)
+- [ ] 14-04-PLAN.md — SIGTERM/SIGINT graceful shutdown (STAB-04)
 
 ## Progress
 
@@ -135,7 +151,7 @@
 | 11. CLI Attendee Clearing Parity | v1.1 | 1/1 | Complete | 2026-04-03 |
 | 12. Foundation Safety | v1.2 | 4/4 | Complete   | 2026-04-04 |
 | 13. Security Hardening | v1.2 | 4/4 | Complete   | 2026-04-04 |
-| 14. MCP Layer Refactor | v1.2 | 0/? | Not started | - |
+| 14. MCP Layer Refactor | v1.2 | 0/4 | Not started | - |
 | 15. Performance | v1.2 | 0/? | Not started | - |
 | 16. Integration Test Coverage | v1.2 | 0/? | Not started | - |
 | 17. Quality Polish | v1.2 | 0/? | Not started | - |
