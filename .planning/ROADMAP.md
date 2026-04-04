@@ -36,7 +36,7 @@
 **Milestone Goal:** Close all 32 in-scope codebase-review findings — security fixes, stability guards, performance wins, and integration test coverage — without regressing any v1.0/v1.1 capability.
 
 - [x] **Phase 12: Foundation Safety** - Establish the safe baseline: HTTP 4xx surfacing, DAV timeouts, JSON output contract, path traversal defense, secret redaction, and constructor hardening (completed 2026-04-04)
-- [ ] **Phase 13: Security Hardening** - Injection escaping for vCard/iCal serialization, URL encoding for blob download URLs, and auth token input documentation
+- [x] **Phase 13: Security Hardening** - Injection escaping for vCard/iCal serialization, URL encoding for blob download URLs, and auth token input documentation (completed 2026-04-04)
 - [ ] **Phase 14: MCP Layer Refactor** - Atomic delivery: shared AppContext DAV client pool, nonce-bound confirmation tokens, GraphQL limits, signal handling, and mutex-narrowing
 - [ ] **Phase 15: Performance** - Concurrent DAV fetching, targeted UID REPORT lookup, allocation reductions across JMAP and MCP layers, optional kreuzberg feature flag
 - [ ] **Phase 16: Integration Test Coverage** - wiremock-based tests in `tests/` verifying JMAP, send, auth, CalDAV, CardDAV, and HTTP error paths without a live server
@@ -72,8 +72,8 @@
 **Plans**: 4 plans
 - [x] 13-01-PLAN.md — vCard EMAIL/TEL escaping (SEC-02)
 - [x] 13-02-PLAN.md — iCal attendee + RRULE escaping/validation (SEC-03)
-- [ ] 13-03-PLAN.md — JMAP blob download URL percent-encoding (SEC-09)
-- [ ] 13-04-PLAN.md — Auth command env/stdin + README migration (SEC-04)
+- [x] 13-03-PLAN.md — JMAP blob download URL percent-encoding (SEC-09)
+- [x] 13-04-PLAN.md — Auth command env/stdin + README migration (SEC-04)
 
 ### Phase 14: MCP Layer Refactor
 **Goal**: The MCP GraphQL layer uses a shared `AppContext` (no TLS handshake per tool call), confirmation tokens are bound to a per-process HMAC nonce (no forgeable deterministic hash), GraphQL query cost is bounded, SIGTERM/SIGINT are handled gracefully, and no `MutexGuard` is held across an `await` in any resolver
@@ -134,7 +134,7 @@
 | 10. Explicit Range Contract Closure | v1.1 | 1/1 | Complete | 2026-04-03 |
 | 11. CLI Attendee Clearing Parity | v1.1 | 1/1 | Complete | 2026-04-03 |
 | 12. Foundation Safety | v1.2 | 4/4 | Complete   | 2026-04-04 |
-| 13. Security Hardening | v1.2 | 2/4 | In Progress|  |
+| 13. Security Hardening | v1.2 | 4/4 | Complete   | 2026-04-04 |
 | 14. MCP Layer Refactor | v1.2 | 0/? | Not started | - |
 | 15. Performance | v1.2 | 0/? | Not started | - |
 | 16. Integration Test Coverage | v1.2 | 0/? | Not started | - |

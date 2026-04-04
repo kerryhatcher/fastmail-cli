@@ -18,7 +18,7 @@
 - [x] **SEC-06**: Config structs holding `api_token` and `app_password` never print secrets via `{:?}` — values are wrapped in `secrecy::SecretString` and redact to `[REDACTED]`. *(finding #15)*
 - [ ] **SEC-07**: The MCP GraphQL schema enforces depth and complexity limits to bound query cost. *(finding #24)*
 - [ ] **SEC-08**: The `markAsSpam` MCP mutation requires the same confirmation-token flow as other destructive mutations. *(finding #25)*
-- [ ] **SEC-09**: Blob-download URL template values are URL-encoded before insertion into JMAP download URLs. *(finding #30)*
+- [x] **SEC-09**: Blob-download URL template values are URL-encoded before insertion into JMAP download URLs. *(finding #30)*
 
 ### Stability (STAB)
 
@@ -85,7 +85,7 @@
 | SEC-06 | Phase 12 | Complete |
 | SEC-07 | Phase 14 | Pending |
 | SEC-08 | Phase 14 | Pending |
-| SEC-09 | Phase 13 | Pending |
+| SEC-09 | Phase 13 | Complete |
 | STAB-01 | Phase 12 | Complete |
 | STAB-02 | Phase 12 | Complete |
 | STAB-03 | Phase 12 | Complete |

@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Hardening & Quality
-status: executing
-stopped_at: Completed 13-02-PLAN.md
-last_updated: "2026-04-04T23:07:23.065Z"
+status: verifying
+stopped_at: Completed 13-03-PLAN.md
+last_updated: "2026-04-04T23:08:15.134Z"
 last_activity: 2026-04-04
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 8
-  completed_plans: 6
+  completed_plans: 8
   percent: 0
 ---
 
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-04-04)
 ## Current Position
 
 Phase: 13 (security-hardening) — EXECUTING
-Plan: 3 of 4
-Status: Ready to execute
+Plan: 4 of 4
+Status: Phase complete — ready for verification
 Last activity: 2026-04-04
 
 Progress: [░░░░░░░░░░] 0%
@@ -53,6 +53,8 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 12-foundation-safety P01 | 10min | 2 tasks | 4 files |
 | Phase 13-security-hardening P01 | 3min | 2 tasks | 1 files |
 | Phase 13-security-hardening P02 | 8min | 2 tasks | 1 files |
+| Phase 13-security-hardening P03 | 15 | 2 tasks | 3 files |
+| Phase 13 P04 | 212s | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -71,6 +73,10 @@ Pending user decision before Phase 12 planning:
 - [Phase 13-security-hardening]: Applied escape_value() to EMAIL/TEL value and label on serialize path — matches existing FN/N/ORG/TITLE/ADR/NOTE pattern, no new dependencies
 - [Phase 13-security-hardening]: escape_ical_value() reused for attendee email; sanitize_role/sanitize_partstat add RFC 5545 enum validation with uppercase normalization
 - [Phase 13-security-hardening]: serialize_rrule drops invalid UNTIL silently; invalid FREQ produces empty FREQ= string (caller responsibility)
+- [Phase 13-security-hardening]: encode_blob_url_segment() extracted as free function (not JmapClient method) to enable isolated unit testing via super:: import
+- [Phase 13-security-hardening]: SEC-09: NON_ALPHANUMERIC applied to {blobId} and {name} only; {accountId} and {type} left unencoded (accountId always safe, type hardcoded MIME)
+- [Phase 13]: Used std::io::stdin().is_terminal() instead of rpassword — terminal hiding via read -rs shell pattern is sufficient per D-10
+- [Phase 13]: resolve_token() uses Output::error+bail pattern for non-interactive failure, consistent with existing command handlers
 
 ### Pending Todos
 
@@ -83,6 +89,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-04T23:07:23.063Z
-Stopped at: Completed 13-02-PLAN.md
+Last session: 2026-04-04T23:08:03.679Z
+Stopped at: Completed 13-03-PLAN.md
 Resume file: None
