@@ -1434,10 +1434,10 @@ fn serialize_rrule(recurrence: &EventRecurrence) -> String {
     if let Some(count) = recurrence.count {
         parts.push(format!("COUNT={count}"));
     }
-    if let Some(until) = recurrence.until.as_deref() {
-        if is_valid_rrule_until(until) {
-            parts.push(format!("UNTIL={until}"));
-        }
+    if let Some(until) = recurrence.until.as_deref()
+        && is_valid_rrule_until(until)
+    {
+        parts.push(format!("UNTIL={until}"));
     }
     let by_day: Vec<String> = recurrence
         .by_day
@@ -1988,5 +1988,97 @@ mod tests {
     fn test_caldav_client_new_returns_ok() {
         let result = CalDavClient::new("user@example.com".to_string(), "pass".to_string());
         assert!(result.is_ok());
+    }
+}
+
+#[cfg(test)]
+mod sec03_tests {
+    use super::*;
+
+    #[test]
+    fn test_attendee_email_newline_escaped() {
+        let a = EventAttendee {
+            email: "a@b.com\nSUMMARY:Injected".into(),
+            ..Default::default()
+        };
+        let s = serialize_attendee(&a);
+        assert!(
+            s.contains(r"mailto:a@b.com\nSUMMARY:Injected"),
+            "got: {s}"
+        );
+        assert_eq!(s.lines().count(), 1, "must not produce multiple lines: {s}");
+    }
+
+    #[test]
+    fn test_attendee_role_invalid_dropped() {
+        let a = EventAttendee {
+            email: "a@b.com".into(),
+            role: Some("INJECT;X".into()),
+            ..Default::default()
+        };
+        let s = serialize_attendee(&a);
+        assert!(!s.contains("ROLE="), "bad role should be dropped: {s}");
+    }
+
+    #[test]
+    fn test_attendee_partstat_case_normalized() {
+        let a = EventAttendee {
+            email: "a@b.com".into(),
+            partstat: Some("accepted".into()),
+            ..Default::default()
+        };
+        let s = serialize_attendee(&a);
+        assert!(s.contains("PARTSTAT=ACCEPTED"), "got: {s}");
+    }
+
+    #[test]
+    fn test_rrule_until_invalid_dropped() {
+        let r = EventRecurrence {
+            frequency: "DAILY".into(),
+            until: Some("2026-04-30;INJECT".into()),
+            ..Default::default()
+        };
+        let s = serialize_rrule(&r);
+        assert!(!s.contains("UNTIL="), "bad until should be dropped: {s}");
+    }
+
+    #[test]
+    fn test_rrule_until_valid_kept() {
+        let r1 = EventRecurrence {
+            frequency: "DAILY".into(),
+            until: Some("20260430".into()),
+            ..Default::default()
+        };
+        assert!(serialize_rrule(&r1).contains("UNTIL=20260430"));
+        let r2 = EventRecurrence {
+            frequency: "DAILY".into(),
+            until: Some("20260430T120000Z".into()),
+            ..Default::default()
+        };
+        assert!(serialize_rrule(&r2).contains("UNTIL=20260430T120000Z"));
+    }
+
+    #[test]
+    fn test_rrule_byday_invalid_dropped() {
+        let r = EventRecurrence {
+            frequency: "WEEKLY".into(),
+            by_day: vec!["MO".into(), "BAD\n".into(), "-1SU".into()],
+            ..Default::default()
+        };
+        let s = serialize_rrule(&r);
+        assert!(s.contains("BYDAY=MO,-1SU"), "got: {s}");
+    }
+
+    #[test]
+    fn test_rrule_freq_invalid_empty() {
+        let r = EventRecurrence {
+            frequency: "EVIL;X".into(),
+            ..Default::default()
+        };
+        let s = serialize_rrule(&r);
+        assert!(
+            s.starts_with("FREQ=;") || s == "FREQ=",
+            "bad freq should be empty: {s}"
+        );
     }
 }
