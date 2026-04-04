@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Hardening & Quality
-status: executing
-stopped_at: Completed 12-03-PLAN.md
-last_updated: "2026-04-04T22:40:47.955Z"
+status: verifying
+stopped_at: Completed 12-01-PLAN.md
+last_updated: "2026-04-04T22:41:53.223Z"
 last_activity: 2026-04-04
 progress:
   total_phases: 6
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 4
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-04-04)
 
 Phase: 12 (foundation-safety) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-04
 
 Progress: [░░░░░░░░░░] 0%
@@ -50,6 +50,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 12-foundation-safety P02 | 25 | 2 tasks | 8 files |
 | Phase 12 P04 | 15 | 1 tasks | 1 files |
 | Phase 12-foundation-safety P03 | 9 | 2 tasks | 3 files |
+| Phase 12-foundation-safety P01 | 10min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -64,6 +65,7 @@ Pending user decision before Phase 12 planning:
 - [Phase 12]: Commands::Completions arm changed from return; to Ok(()) to unify match expression type as anyhow::Result<()>
 - [Phase 12-foundation-safety]: 4xx arm placed after 500..=599 in JMAP match blocks to preserve 401/429 specificity; format 'HTTP {code} from API' avoids double Error::Server prefix
 - [Phase 12-foundation-safety]: JmapClient::new() maps reqwest builder failure to Error::Config (no new variant); production callers use ?, test callers use .expect('test client')
+- [Phase 12-foundation-safety]: SEC-06: Custom serde helpers required for SecretString TOML serialization — secrecy 0.10 serde feature only provides Deserialize for SecretBox<str>; expose_secret() boundary maintained at Config accessor methods only
 
 ### Pending Todos
 
@@ -76,6 +78,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-04T22:40:47.953Z
-Stopped at: Completed 12-03-PLAN.md
+Last session: 2026-04-04T22:41:53.220Z
+Stopped at: Completed 12-01-PLAN.md
 Resume file: None
