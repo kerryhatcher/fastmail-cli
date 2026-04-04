@@ -1,6 +1,7 @@
 use crate::commands::SearchFilter;
 use crate::error::{Error, Result};
 use crate::models::*;
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -17,6 +18,15 @@ const DESIRED_CAPABILITIES: &[&str] = &[
     "urn:ietf:params:jmap:submission",
     "https://www.fastmail.com/dev/maskedemail",
 ];
+
+/// Percent-encode a JMAP blob URL path segment using the NON_ALPHANUMERIC set.
+///
+/// Ensures characters such as spaces, Unicode code points, and URL-reserved
+/// characters (e.g. `/`, `#`, `?`) are safely encoded before they are
+/// substituted into a JMAP download URL template.
+fn encode_blob_url_segment(s: &str) -> String {
+    utf8_percent_encode(s, NON_ALPHANUMERIC).to_string()
+}
 
 pub struct JmapClient {
     client: Client,
@@ -865,12 +875,19 @@ impl JmapClient {
         let account_id = self.account_id()?;
         let session = self.session()?;
 
+        // Percent-encode user-controlled segments before template substitution
+        // so filenames or blob IDs containing spaces, Unicode, or URL-reserved
+        // characters produce well-formed URLs.  {accountId} is always safe
+        // (Fastmail account IDs are alphanumeric) and {type} is hardcoded.
+        let encoded_blob_id = encode_blob_url_segment(blob_id);
+        let encoded_name = encode_blob_url_segment("attachment");
+
         // downloadUrl template: https://api.fastmail.com/jmap/download/{accountId}/{blobId}/{name}?accept={type}
         let url = session
             .download_url
             .replace("{accountId}", account_id)
-            .replace("{blobId}", blob_id)
-            .replace("{name}", "attachment")
+            .replace("{blobId}", &encoded_blob_id)
+            .replace("{name}", &encoded_name)
             .replace("{type}", "application/octet-stream");
 
         debug!(url = %url, "Downloading blob");
