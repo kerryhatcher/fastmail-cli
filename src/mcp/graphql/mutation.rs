@@ -812,16 +812,34 @@ impl MutationRoot {
         }
     }
 
-    /// Mark an email as spam. Moves to Junk AND trains the spam filter. MUST use action=PREVIEW first.
+    /// Mark an email as spam. Moves to Junk AND trains the spam filter.
+    /// Destructive — requires PREVIEW + CONFIRM with confirmation_token (SEC-08).
     async fn mark_as_spam(
         &self,
         ctx: &Context<'_>,
         #[graphql(desc = "The email ID")] email_id: String,
         #[graphql(desc = "PREVIEW first, then CONFIRM")] action: SpamAction,
+        #[graphql(desc = "Confirmation token returned by PREVIEW")] confirmation_token: Option<
+            String,
+        >,
     ) -> Result<GqlStatus> {
-        let client = ctx.data::<super::AppContext>()?.require_jmap()?;
-        let mut client = client.lock().await;
+        let app_ctx = ctx.data::<super::AppContext>()?;
+        let token = app_ctx.confirmation_token(&[&email_id]);
 
+        // Validate token BEFORE acquiring JMAP lock (defense-in-depth: malicious callers
+        // cannot force JMAP acquisition without a valid token).
+        if matches!(action, SpamAction::Confirm) && confirmation_token.as_deref() != Some(&token) {
+            return Ok(GqlStatus {
+                success: false,
+                message: None,
+                error: Some(
+                    "Missing or invalid confirmation_token. Use action=PREVIEW first.".to_string(),
+                ),
+            });
+        }
+
+        let client = app_ctx.require_jmap()?;
+        let mut client = client.lock().await;
         let email = client.get_email(&email_id).await?;
 
         if matches!(action, SpamAction::Preview) {
@@ -834,14 +852,17 @@ impl MutationRoot {
             return Ok(GqlStatus {
                 success: true,
                 message: Some(format!(
-                    "SPAM PREVIEW — This will:\n1. Move to Junk folder\n2. Train spam filter\n\nEmail: \"{}\"\nFrom: {}\n\nUse action=CONFIRM to proceed.",
+                    "SPAM PREVIEW — This will:\n1. Move to Junk folder\n2. Train spam filter\n\nEmail: \"{}\"\nFrom: {}\n\nUse action=CONFIRM with confirmation_token=\"{}\" to proceed.\n\nConfirmation token: {}",
                     email.subject.as_deref().unwrap_or("(no subject)"),
-                    sender
+                    sender,
+                    token,
+                    token
                 )),
                 error: None,
             });
         }
 
+        // CONFIRM branch — token already validated above.
         match client.mark_spam(&email_id).await {
             Ok(()) => Ok(GqlStatus {
                 success: true,
@@ -992,4 +1013,77 @@ fn format_send_preview(
         subject,
         body
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::{AppContext, build_schema};
+
+    fn test_schema() -> super::super::FastmailSchema {
+        build_schema(AppContext::new_with_key(None, [0u8; 32]))
+    }
+
+    /// CONFIRM without any token returns "Missing or invalid confirmation_token" error.
+    #[tokio::test]
+    async fn mark_as_spam_confirm_rejects_missing_token() {
+        let schema = test_schema();
+        let result = schema
+            .execute(
+                r#"mutation {
+                    markAsSpam(emailId: "email-test-id", action: CONFIRM) {
+                        success
+                        error
+                    }
+                }"#,
+            )
+            .await;
+        // Either a GraphQL-level error (auth) or a business-level success:false with the
+        // "Missing or invalid confirmation_token" message.  Since there is no JMAP client
+        // and the token check happens BEFORE require_jmap, we must see the token error.
+        let data = result.data.into_json().unwrap();
+        let success = data["markAsSpam"]["success"].as_bool().unwrap_or(true);
+        let error = data["markAsSpam"]["error"].as_str().unwrap_or("");
+        assert!(!success, "Expected success=false, got: {data:?}");
+        assert!(
+            error.contains("Missing or invalid confirmation_token"),
+            "Expected token error, got: {error}"
+        );
+    }
+
+    /// CONFIRM with a wrong token returns the same rejection error.
+    #[tokio::test]
+    async fn mark_as_spam_confirm_rejects_wrong_token() {
+        let schema = test_schema();
+        let result = schema
+            .execute(
+                r#"mutation {
+                    markAsSpam(emailId: "email-test-id", action: CONFIRM, confirmationToken: "totally-wrong") {
+                        success
+                        error
+                    }
+                }"#,
+            )
+            .await;
+        let data = result.data.into_json().unwrap();
+        let success = data["markAsSpam"]["success"].as_bool().unwrap_or(true);
+        let error = data["markAsSpam"]["error"].as_str().unwrap_or("");
+        assert!(!success, "Expected success=false, got: {data:?}");
+        assert!(
+            error.contains("Missing or invalid confirmation_token"),
+            "Expected token error, got: {error}"
+        );
+    }
+
+    /// Different AppContext instances produce different tokens for the same email_id.
+    #[test]
+    fn mark_as_spam_different_keys_produce_different_tokens() {
+        let ctx_a = AppContext::new_with_key(None, [1u8; 32]);
+        let ctx_b = AppContext::new_with_key(None, [2u8; 32]);
+        let token_a = ctx_a.confirmation_token(&["email-test-id"]);
+        let token_b = ctx_b.confirmation_token(&["email-test-id"]);
+        assert_ne!(
+            token_a, token_b,
+            "Different keys must produce different tokens"
+        );
+    }
 }
