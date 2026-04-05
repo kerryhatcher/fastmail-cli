@@ -423,6 +423,93 @@ impl CalDavClient {
             self.list_calendars().await?
         };
 
+        let report_body = build_uid_report_body(event_id);
+
+        // Issue one REPORT per calendar concurrently (D-04)
+        let futures: Vec<_> = calendars
+            .iter()
+            .map(|calendar| {
+                let cal = calendar.clone();
+                let body = report_body.clone();
+                async move {
+                    let url = format!("{CALDAV_BASE}{}", cal.href);
+                    let response = self
+                        .client
+                        .request(Method::from_bytes(b"REPORT").unwrap(), &url)
+                        .basic_auth(&self.username, Some(&self.app_password))
+                        .header("Content-Type", "application/xml")
+                        .header("Depth", "1")
+                        .body(body)
+                        .send()
+                        .await?;
+                    let status = response.status();
+                    let text = response.text().await?;
+                    Ok::<(reqwest::StatusCode, String, Calendar), crate::error::Error>((
+                        status, text, cal,
+                    ))
+                }
+            })
+            .collect();
+
+        let results = join_all(futures).await;
+
+        let mut needs_fallback = false;
+        for result in results {
+            match result {
+                Ok((status, text, cal)) => {
+                    if status == reqwest::StatusCode::BAD_REQUEST
+                        || status.as_u16() == 501
+                    {
+                        // Server doesn't support UID REPORT — mark for fallback (D-05)
+                        needs_fallback = true;
+                    } else if status.is_success() || status.as_u16() == 207 {
+                        // Parse the multistatus response for matching VEVENTs
+                        if let Ok(events) = parse_events_response_for_range(
+                            &text,
+                            &cal,
+                            None,
+                            None,
+                        )
+                            && let Some(event) =
+                                events.into_iter().find(|e| e.id == event_id)
+                        {
+                            return Ok(event);
+                        }
+                    } else {
+                        warn!(
+                            calendar = %cal.id,
+                            status = %status,
+                            "CalDAV UID REPORT returned unexpected status"
+                        );
+                    }
+                }
+                Err(e) => {
+                    warn!(error = %e, "CalDAV UID REPORT request failed");
+                }
+            }
+        }
+
+        // Fall back to full-fetch if REPORT unsupported (D-05)
+        if needs_fallback {
+            warn!(uid = %event_id, "UID REPORT unsupported, falling back to full fetch");
+            return self.get_event_by_id_full_fetch(event_id, calendar_id).await;
+        }
+
+        Err(Error::EventNotFound(event_id.to_string()))
+    }
+
+    /// Full-fetch fallback for get_event_by_id when UID REPORT is unsupported (D-05).
+    async fn get_event_by_id_full_fetch(
+        &self,
+        event_id: &str,
+        calendar_id: Option<&str>,
+    ) -> Result<CalendarEvent> {
+        let calendars = if let Some(calendar_id) = calendar_id {
+            vec![self.get_calendar_by_id(calendar_id).await?]
+        } else {
+            self.list_calendars().await?
+        };
+
         for calendar in calendars {
             let events = self.list_events_in_calendar(&calendar, None, None).await?;
             if let Some(event) = events.into_iter().find(|event| event.id == event_id) {
@@ -1827,6 +1914,43 @@ fn xml_escape(value: &str) -> String {
         .replace('>', "&gt;")
 }
 
+/// Escape XML special characters in a UID for embedding in XML text content.
+///
+/// Handles `&`, `<`, `>`, `"`, and `'` to prevent injection.
+fn xml_escape_uid(uid: &str) -> String {
+    uid.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
+/// Build an RFC 4791 calendar-query REPORT body targeting a specific event UID.
+///
+/// Uses `collation="i;unicode-casemap"` and `match-type="equals"` for exact UID
+/// match as required by D-06. XML special characters in the UID are escaped.
+pub(crate) fn build_uid_report_body(uid: &str) -> String {
+    let escaped_uid = xml_escape_uid(uid);
+    format!(
+        r#"<?xml version="1.0" encoding="utf-8" ?>
+<C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+  <D:prop>
+    <D:getetag/>
+    <C:calendar-data/>
+  </D:prop>
+  <C:filter>
+    <C:comp-filter name="VCALENDAR">
+      <C:comp-filter name="VEVENT">
+        <C:prop-filter name="UID">
+          <C:text-match collation="i;unicode-casemap" match-type="equals">{escaped_uid}</C:text-match>
+        </C:prop-filter>
+      </C:comp-filter>
+    </C:comp-filter>
+  </C:filter>
+</C:calendar-query>"#
+    )
+}
+
 fn local_from_naive(date: NaiveDate, hour: u32, minute: u32, second: u32) -> DateTime<Local> {
     let naive = date
         .and_hms_opt(hour, minute, second)
@@ -2017,6 +2141,54 @@ mod tests {
     fn test_caldav_client_new_returns_ok() {
         let result = CalDavClient::new("user@example.com".to_string(), "pass".to_string());
         assert!(result.is_ok());
+    }
+
+    // ===== build_uid_report_body tests =====
+
+    #[test]
+    fn build_uid_report_body_contains_prop_filter_uid() {
+        let body = build_uid_report_body("abc-123");
+        assert!(
+            body.contains(r#"<C:prop-filter name="UID">"#),
+            "missing prop-filter UID: {body}"
+        );
+    }
+
+    #[test]
+    fn build_uid_report_body_contains_correct_collation_and_match_type() {
+        let body = build_uid_report_body("abc-123");
+        assert!(
+            body.contains(r#"collation="i;unicode-casemap""#),
+            "missing collation: {body}"
+        );
+        assert!(
+            body.contains(r#"match-type="equals""#),
+            "missing match-type=equals: {body}"
+        );
+    }
+
+    #[test]
+    fn build_uid_report_body_contains_uid_text() {
+        let body = build_uid_report_body("my-uid-value");
+        assert!(
+            body.contains("my-uid-value"),
+            "missing UID text: {body}"
+        );
+    }
+
+    #[test]
+    fn build_uid_report_body_escapes_ampersand_in_uid() {
+        let body = build_uid_report_body("a&b");
+        assert!(body.contains("a&amp;b"), "missing &amp; escape: {body}");
+        assert!(!body.contains("a&b\n"), "unescaped & present: {body}");
+    }
+
+    #[test]
+    fn build_uid_report_body_escapes_xml_special_chars_in_uid() {
+        let body = build_uid_report_body("a&b<c>d\"e'f");
+        assert!(body.contains("a&amp;b"), "missing &amp;: {body}");
+        assert!(body.contains("&lt;c&gt;"), "missing &lt;&gt;: {body}");
+        assert!(body.contains("&quot;e&apos;f"), "missing &quot;&apos;: {body}");
     }
 
     // ===== collect_partial_events tests =====
