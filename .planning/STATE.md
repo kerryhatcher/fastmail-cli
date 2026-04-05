@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Hardening & Quality
 status: executing
-stopped_at: Completed 17-quality-polish 17-01-PLAN.md
-last_updated: "2026-04-05T01:58:43.065Z"
+stopped_at: Completed 17-quality-polish-03-PLAN.md
+last_updated: "2026-04-05T01:58:51.816Z"
 last_activity: 2026-04-05
 progress:
   total_phases: 6
@@ -118,6 +118,7 @@ Pending user decision before Phase 12 planning:
 - [Phase 16-integration-test-coverage]: CalDAV principal discovery XML must use path-only hrefs (not full URLs) because CalDavClient prepends self.base_url
 - [Phase 16-integration-test-coverage]: wiremock up_to_n_times(1) used per PUT variant to serve create 201 first then update 204 for CRUD test
 - [Phase 16-integration-test-coverage]: send_email() issues 3 sequential POSTs (Mailbox/get, Identity/get, Email/set+Submission/set); mocked with .up_to_n_times(1) mocks in registration order
+- [Phase 17-quality-polish]: QUAL-01: Removed stale #[allow(unused_imports)] from jmap/mod.rs (Arc) and carddav/mod.rs (pub use uuid::Uuid) — both imports are actively used, annotations were leftover scaffolding suppressing nothing
 
 ### Pending Todos
 
@@ -130,6 +131,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-05T01:58:33.451Z
-Stopped at: Completed 17-quality-polish 17-01-PLAN.md
+Last session: 2026-04-05T01:58:51.814Z
+Stopped at: Completed 17-quality-polish-03-PLAN.md
 Resume file: None

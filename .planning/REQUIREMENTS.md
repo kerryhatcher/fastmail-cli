@@ -53,7 +53,7 @@
 
 ### Code Quality (QUAL)
 
-- [ ] **QUAL-01**: Stale `#[allow(unused_imports)]` on actively-used imports is removed. *(finding #28)*
+- [x] **QUAL-01**: Stale `#[allow(unused_imports)]` on actively-used imports is removed. *(finding #28)*
 
 ---
 
@@ -108,7 +108,7 @@
 | PERF-10 | Phase 15 | Complete |
 | PERF-11 | Phase 15 | Complete |
 | TEST-01 | Phase 16 | Complete |
-| QUAL-01 | Phase 17 | Pending |
+| QUAL-01 | Phase 17 | Complete |
 
 ---
 *Last updated: 2026-04-04*
