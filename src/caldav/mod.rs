@@ -7,12 +7,13 @@ use chrono::{
     DateTime, Datelike, Duration, Local, LocalResult, NaiveDate, NaiveDateTime, TimeZone, Timelike,
     Utc,
 };
+use futures::future::join_all;
 use reqwest::{
     Client, Method,
     header::{ETAG, HeaderMap, HeaderName, IF_MATCH, IF_NONE_MATCH, LOCATION},
 };
 use serde::{Deserialize, Serialize};
-use tracing::{debug, instrument};
+use tracing::{debug, instrument, warn};
 pub use uuid::Uuid;
 
 use crate::error::{Error, Result};
@@ -357,13 +358,22 @@ impl CalDavClient {
             self.list_calendars().await?
         };
 
-        let mut all_events = Vec::new();
-        for calendar in calendars {
-            let mut events = self
-                .list_events_in_calendar(&calendar, query.start, query.end)
-                .await?;
-            all_events.append(&mut events);
-        }
+        // Build one future per calendar — failures are tolerated (D-01, D-02, D-03)
+        let futures: Vec<_> = calendars
+            .iter()
+            .map(|calendar| {
+                let cal = calendar.clone();
+                async move {
+                    let href = cal.href.clone();
+                    self.list_events_in_calendar(&cal, query.start, query.end)
+                        .await
+                        .map(|events| (href, events))
+                }
+            })
+            .collect();
+
+        let results = join_all(futures).await;
+        let mut all_events = collect_partial_events(results);
 
         all_events.sort_by(|a, b| a.start.value.cmp(&b.start.value));
         Ok(all_events)
@@ -552,6 +562,25 @@ impl CalDavClient {
             &text,
         ))
     }
+}
+
+/// Flatten results from concurrent per-calendar fetches, logging warnings for failures.
+///
+/// Returns events from successful calendars only. If all calendars fail, returns
+/// an empty `Vec` — never an `Err` — so callers always get a partial/empty result.
+fn collect_partial_events(
+    results: Vec<Result<(String, Vec<CalendarEvent>)>>,
+) -> Vec<CalendarEvent> {
+    let mut all = Vec::new();
+    for result in results {
+        match result {
+            Ok((_, events)) => all.extend(events),
+            Err(e) => {
+                warn!(error = %e, "CalDAV list_events: calendar fetch failed");
+            }
+        }
+    }
+    all
 }
 
 fn parse_calendar_home_response(xml: &str) -> Result<Option<String>> {
@@ -1988,6 +2017,65 @@ mod tests {
     fn test_caldav_client_new_returns_ok() {
         let result = CalDavClient::new("user@example.com".to_string(), "pass".to_string());
         assert!(result.is_ok());
+    }
+
+    // ===== collect_partial_events tests =====
+
+    fn make_event(id: &str) -> CalendarEvent {
+        CalendarEvent {
+            id: id.to_string(),
+            calendar_id: "default".to_string(),
+            title: id.to_string(),
+            start: EventDateTime {
+                value: "2026-04-03T09:00:00Z".to_string(),
+                timezone: None,
+                all_day: false,
+            },
+            end: EventDateTime {
+                value: "2026-04-03T10:00:00Z".to_string(),
+                timezone: None,
+                all_day: false,
+            },
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn list_events_partial_failure_returns_successes() {
+        // 3 calendars: first and third succeed, middle fails
+        let results: Vec<Result<(String, Vec<CalendarEvent>)>> = vec![
+            Ok(("/cal1".to_string(), vec![make_event("event-a")])),
+            Err(Error::Server("connection refused".to_string())),
+            Ok(("/cal3".to_string(), vec![make_event("event-c")])),
+        ];
+        let events = collect_partial_events(results);
+        assert_eq!(events.len(), 2);
+        let ids: Vec<&str> = events.iter().map(|e| e.id.as_str()).collect();
+        assert!(ids.contains(&"event-a"));
+        assert!(ids.contains(&"event-c"));
+    }
+
+    #[test]
+    fn list_events_all_success_flattened_in_order() {
+        let results: Vec<Result<(String, Vec<CalendarEvent>)>> = vec![
+            Ok(("/cal1".to_string(), vec![make_event("event-a"), make_event("event-b")])),
+            Ok(("/cal2".to_string(), vec![make_event("event-c")])),
+        ];
+        let events = collect_partial_events(results);
+        assert_eq!(events.len(), 3);
+        assert_eq!(events[0].id, "event-a");
+        assert_eq!(events[1].id, "event-b");
+        assert_eq!(events[2].id, "event-c");
+    }
+
+    #[test]
+    fn list_events_all_failure_returns_empty() {
+        let results: Vec<Result<(String, Vec<CalendarEvent>)>> = vec![
+            Err(Error::Server("timeout".to_string())),
+            Err(Error::Server("timeout".to_string())),
+        ];
+        let events = collect_partial_events(results);
+        assert!(events.is_empty());
     }
 }
 

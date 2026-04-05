@@ -2,13 +2,14 @@
 //!
 //! Uses raw HTTP with reqwest since CardDAV is just WebDAV with vCard.
 
+use futures::future::join_all;
 use reqwest::{
     Client,
     header::{ETAG, HeaderMap, IF_MATCH, IF_NONE_MATCH, LOCATION},
 };
 use std::time::Duration;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, instrument};
+use tracing::{debug, instrument, warn};
 // Uuid is imported for use by callers (Phase 3: create_contact will call Uuid::new_v4())
 #[allow(unused_imports)]
 pub use uuid::Uuid;
@@ -216,53 +217,56 @@ impl CardDavClient {
     }
 
     fn parse_contacts_response(&self, xml: &str) -> Result<Vec<Contact>> {
-        let doc = roxmltree::Document::parse(xml)
-            .map_err(|e| Error::Server(format!("Failed to parse XML: {e}")))?;
-
-        let dav_ns = "DAV:";
-        let carddav_ns = "urn:ietf:params:xml:ns:carddav";
-        let mut contacts = Vec::new();
-
-        for response in doc
-            .descendants()
-            .filter(|n| n.has_tag_name((dav_ns, "response")))
-        {
-            let href = response
-                .descendants()
-                .find(|n| n.has_tag_name((dav_ns, "href")))
-                .and_then(|n| n.text())
-                .map(|s| s.to_string());
-
-            let etag = response
-                .descendants()
-                .find(|n| n.has_tag_name((dav_ns, "getetag")))
-                .and_then(|n| n.text())
-                .map(|s| s.to_string());
-
-            if let Some(vcard_data) = response
-                .descendants()
-                .find(|n| n.has_tag_name((carddav_ns, "address-data")))
-                .and_then(|n| n.text())
-                && let Some(contact) = parse_vcard(vcard_data, href, etag)
-            {
-                contacts.push(contact);
-            }
-        }
-
-        contacts.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-        Ok(contacts)
+        parse_contacts_from_xml(xml)
     }
 
-    /// Search contacts by name or email
+    /// Search contacts by name or email across all address books concurrently.
+    ///
+    /// A single failing address book logs a warning and does not abort the search.
     pub async fn search_contacts(&self, query: &str) -> Result<Vec<Contact>> {
-        // Get all contacts from all addressbooks and filter
         let addressbooks = self.list_addressbooks().await?;
-        let mut all_contacts = Vec::new();
 
-        for ab in addressbooks {
-            let contacts = self.list_contacts(&ab.href).await?;
-            all_contacts.extend(contacts);
-        }
+        // Build one future per address book
+        let futures: Vec<_> = addressbooks
+            .iter()
+            .map(|ab| {
+                let href = ab.href.clone();
+                let client = self.client.clone();
+                let username = self.username.clone();
+                let app_password = self.app_password.clone();
+                async move {
+                    let url = format!("{}{}", CARDDAV_BASE, href);
+                    let body = r#"<?xml version="1.0" encoding="utf-8"?>
+<card:addressbook-query xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">
+  <d:prop>
+    <d:getetag/>
+    <card:address-data/>
+  </d:prop>
+</card:addressbook-query>"#;
+                    let response = client
+                        .request(reqwest::Method::from_bytes(b"REPORT").unwrap(), &url)
+                        .basic_auth(&username, Some(&app_password))
+                        .header("Content-Type", "application/xml")
+                        .header("Depth", "1")
+                        .body(body)
+                        .send()
+                        .await?;
+                    let status = response.status();
+                    let text: String = response.text().await?;
+                    if !status.is_success() && status.as_u16() != 207 {
+                        return Err(crate::error::Error::Server(format!(
+                            "CardDAV REPORT failed for {href}: {status} - {text}"
+                        )));
+                    }
+                    // Inline parse to avoid needing &self
+                    parse_contacts_from_xml(&text)
+                        .map(|contacts| (href, contacts))
+                }
+            })
+            .collect();
+
+        let results = join_all(futures).await;
+        let all_contacts = collect_partial_contacts(results);
 
         let query_lower = query.to_lowercase();
         let filtered: Vec<Contact> = all_contacts
@@ -411,6 +415,67 @@ impl CardDavClient {
         map_write_response(&contact, Some(etag), status, &headers, &body)?;
         Ok(())
     }
+}
+
+/// Parse CardDAV multistatus XML into a list of contacts.
+///
+/// Used both by the `parse_contacts_response` method and by the concurrent
+/// per-book futures in `search_contacts`.
+fn parse_contacts_from_xml(xml: &str) -> Result<Vec<Contact>> {
+    let doc = roxmltree::Document::parse(xml)
+        .map_err(|e| Error::Server(format!("Failed to parse XML: {e}")))?;
+
+    let dav_ns = "DAV:";
+    let carddav_ns = "urn:ietf:params:xml:ns:carddav";
+    let mut contacts = Vec::new();
+
+    for response in doc
+        .descendants()
+        .filter(|n| n.has_tag_name((dav_ns, "response")))
+    {
+        let href = response
+            .descendants()
+            .find(|n| n.has_tag_name((dav_ns, "href")))
+            .and_then(|n| n.text())
+            .map(|s| s.to_string());
+
+        let etag = response
+            .descendants()
+            .find(|n| n.has_tag_name((dav_ns, "getetag")))
+            .and_then(|n| n.text())
+            .map(|s| s.to_string());
+
+        if let Some(vcard_data) = response
+            .descendants()
+            .find(|n| n.has_tag_name((carddav_ns, "address-data")))
+            .and_then(|n| n.text())
+            && let Some(contact) = parse_vcard(vcard_data, href, etag)
+        {
+            contacts.push(contact);
+        }
+    }
+
+    contacts.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(contacts)
+}
+
+/// Flatten results from concurrent per-book fetches, logging warnings for failures.
+///
+/// Returns items from successful books only. If all books fail, returns an empty
+/// `Vec` — never an `Err` — so callers always get a partial/empty result.
+fn collect_partial_contacts(
+    results: Vec<Result<(String, Vec<Contact>)>>,
+) -> Vec<Contact> {
+    let mut all = Vec::new();
+    for result in results {
+        match result {
+            Ok((_, contacts)) => all.extend(contacts),
+            Err(e) => {
+                warn!(error = %e, "CardDAV search_contacts: book fetch failed");
+            }
+        }
+    }
+    all
 }
 
 fn build_contact_href(addressbook_href: &str, contact_id: &str) -> String {
@@ -1566,5 +1631,62 @@ END:VCARD</card:address-data>
             .filter(|l| l.trim_start().starts_with("MALICIOUS:"))
             .count();
         assert_eq!(malicious_lines, 0, "label injection not blocked: {vcard}");
+    }
+
+    // ===== collect_partial_contacts tests =====
+
+    fn make_contact(name: &str) -> Contact {
+        Contact {
+            id: name.to_lowercase().replace(' ', "-"),
+            name: name.to_string(),
+            emails: vec![],
+            phones: vec![],
+            organization: None,
+            title: None,
+            notes: None,
+            address: None,
+            href: None,
+            etag: None,
+        }
+    }
+
+    #[test]
+    fn search_contacts_partial_failure_returns_successes() {
+        // 3 books: first and third succeed, middle fails
+        let results: Vec<Result<(String, Vec<Contact>)>> = vec![
+            Ok(("/book1".to_string(), vec![make_contact("Alice")])),
+            Err(Error::Server("connection refused".to_string())),
+            Ok(("/book3".to_string(), vec![make_contact("Charlie")])),
+        ];
+        let contacts = collect_partial_contacts(results);
+        assert_eq!(contacts.len(), 2);
+        let names: Vec<&str> = contacts.iter().map(|c| c.name.as_str()).collect();
+        assert!(names.contains(&"Alice"));
+        assert!(names.contains(&"Charlie"));
+    }
+
+    #[test]
+    fn search_contacts_all_success_flattened_in_order() {
+        let results: Vec<Result<(String, Vec<Contact>)>> = vec![
+            Ok(("/book1".to_string(), vec![make_contact("Alice"), make_contact("Bob")])),
+            Ok(("/book2".to_string(), vec![make_contact("Charlie")])),
+        ];
+        let contacts = collect_partial_contacts(results);
+        assert_eq!(contacts.len(), 3);
+        // Order should match books iteration order
+        assert_eq!(contacts[0].name, "Alice");
+        assert_eq!(contacts[1].name, "Bob");
+        assert_eq!(contacts[2].name, "Charlie");
+    }
+
+    #[test]
+    fn search_contacts_all_failure_returns_empty() {
+        let results: Vec<Result<(String, Vec<Contact>)>> = vec![
+            Err(Error::Server("timeout".to_string())),
+            Err(Error::Server("timeout".to_string())),
+            Err(Error::Server("timeout".to_string())),
+        ];
+        let contacts = collect_partial_contacts(results);
+        assert!(contacts.is_empty());
     }
 }

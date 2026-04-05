@@ -14,13 +14,15 @@ impl QueryRoot {
         // Note: tokio::sync::MutexGuard is Send and safe to hold across .await (STAB-07 audit 2026-04-04).
         let client = ctx.data::<super::AppContext>()?.require_jmap()?;
         let mut client = client.lock().await;
-        let mut mailboxes = client.list_mailboxes().await?;
-        mailboxes.sort_by(|a, b| match (&a.role, &b.role) {
+        let mailboxes = client.list_mailboxes().await?;
+        // Arc<Vec<Mailbox>> — iterate by reference, then clone each Mailbox for GqlMailbox::from.
+        let mut sorted: Vec<GqlMailbox> = mailboxes.iter().map(|m| GqlMailbox::from(m.clone())).collect();
+        sorted.sort_by(|a, b| match (&a.role, &b.role) {
             (Some(_), None) => std::cmp::Ordering::Less,
             (None, Some(_)) => std::cmp::Ordering::Greater,
             _ => a.name.cmp(&b.name),
         });
-        Ok(mailboxes.into_iter().map(GqlMailbox::from).collect())
+        Ok(sorted)
     }
 
     /// List emails in a specific mailbox/folder.

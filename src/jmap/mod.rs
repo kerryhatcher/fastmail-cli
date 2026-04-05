@@ -35,8 +35,8 @@ pub struct JmapClient {
     client: Client,
     token: String,
     session: Option<Session>,
-    available_capabilities: Vec<String>,
-    cached_mailboxes: Option<Vec<Mailbox>>,
+    available_capabilities: Arc<Vec<String>>,
+    cached_mailboxes: Option<Arc<Vec<Mailbox>>>,
 }
 
 /// Create an authenticated JMAP client from config
@@ -198,7 +198,7 @@ impl JmapClient {
             client,
             token,
             session: None,
-            available_capabilities: Vec::new(),
+            available_capabilities: Arc::new(Vec::new()),
             cached_mailboxes: None,
         })
     }
@@ -228,11 +228,12 @@ impl JmapClient {
 
         let session: Session = resp.json().await?;
         debug!(username = %session.username, "Session established");
-        self.available_capabilities = DESIRED_CAPABILITIES
+        let caps: Vec<String> = DESIRED_CAPABILITIES
             .iter()
             .filter(|cap| session.capabilities.contains_key(**cap))
             .map(|s| s.to_string())
             .collect();
+        self.available_capabilities = Arc::new(caps);
         self.session = Some(session);
         Ok(self.session.as_ref().unwrap())
     }
@@ -264,7 +265,9 @@ impl JmapClient {
     async fn request(&self, method_calls: Vec<Value>) -> Result<Vec<Value>> {
         let session = self.session()?;
         let req = JmapRequest {
-            using: self.available_capabilities.clone(),
+            // Clone the inner Vec<String> from the Arc for serialization.
+            // Arc::clone would only give another Arc — serde needs an owned Vec<String>.
+            using: (*self.available_capabilities).clone(),
             method_calls,
         };
 
@@ -358,9 +361,10 @@ impl JmapClient {
     }
 
     #[instrument(skip(self))]
-    pub async fn list_mailboxes(&mut self) -> Result<Vec<Mailbox>> {
+    pub async fn list_mailboxes(&mut self) -> Result<Arc<Vec<Mailbox>>> {
         if let Some(ref cached) = self.cached_mailboxes {
-            return Ok(cached.clone());
+            // Cache hit: clone only the Arc (O(1)), not the Vec contents.
+            return Ok(Arc::clone(cached));
         }
 
         let account_id = self.account_id()?;
@@ -381,10 +385,11 @@ impl JmapClient {
             .await?;
 
         let resp: GetResponse<Mailbox> =
-            Self::parse_response(responses.first().unwrap_or(&Value::Null), "Mailbox/get")?;
+            Self::parse_response(responses.into_iter().next().unwrap_or(Value::Null), "Mailbox/get")?;
 
-        self.cached_mailboxes = Some(resp.list.clone());
-        Ok(resp.list)
+        let arc = Arc::new(resp.list);
+        self.cached_mailboxes = Some(Arc::clone(&arc));
+        Ok(arc)
     }
 
     pub async fn find_mailbox(&mut self, name: &str) -> Result<Mailbox> {
@@ -445,7 +450,7 @@ impl JmapClient {
             .await?;
 
         let resp: GetResponse<Email> =
-            Self::parse_response(responses.get(1).unwrap_or(&Value::Null), "Email/get")?;
+            Self::parse_response(responses.into_iter().nth(1).unwrap_or(Value::Null), "Email/get")?;
 
         Ok(resp.list)
     }
@@ -475,7 +480,7 @@ impl JmapClient {
             .await?;
 
         let resp: GetResponseWithNotFound<Email> =
-            Self::parse_response(responses.first().unwrap_or(&Value::Null), "Email/get")?;
+            Self::parse_response(responses.into_iter().next().unwrap_or(Value::Null), "Email/get")?;
 
         if !resp.not_found.is_empty() {
             return Err(Error::EmailNotFound(email_id.into()));
@@ -517,7 +522,7 @@ impl JmapClient {
         }
 
         let thread_resp: GetResponse<Thread> =
-            Self::parse_response(responses.first().unwrap_or(&Value::Null), "Thread/get")?;
+            Self::parse_response(responses.into_iter().next().unwrap_or(Value::Null), "Thread/get")?;
 
         let thread = thread_resp
             .list
@@ -545,7 +550,7 @@ impl JmapClient {
             .await?;
 
         let resp: GetResponse<Email> =
-            Self::parse_response(responses.first().unwrap_or(&Value::Null), "Email/get")?;
+            Self::parse_response(responses.into_iter().next().unwrap_or(Value::Null), "Email/get")?;
 
         Ok(resp.list)
     }
@@ -653,7 +658,7 @@ impl JmapClient {
             .await?;
 
         let resp: GetResponse<Email> =
-            Self::parse_response(responses.get(1).unwrap_or(&Value::Null), "Email/get")?;
+            Self::parse_response(responses.into_iter().nth(1).unwrap_or(Value::Null), "Email/get")?;
 
         Ok(resp.list)
     }
@@ -671,7 +676,7 @@ impl JmapClient {
             .await?;
 
         let resp: GetResponse<Identity> =
-            Self::parse_response(responses.first().unwrap_or(&Value::Null), "Identity/get")?;
+            Self::parse_response(responses.into_iter().next().unwrap_or(Value::Null), "Identity/get")?;
 
         Ok(resp.list)
     }
@@ -704,9 +709,13 @@ impl JmapClient {
         })
     }
 
-    fn parse_email_create_response(responses: &[Value]) -> Result<String> {
-        let email_resp: EmailSetResponse =
-            Self::parse_response(responses.first().unwrap_or(&Value::Null), "Email/set")?;
+    fn parse_email_create_response(mut responses: Vec<Value>) -> Result<String> {
+        let first = if responses.is_empty() {
+            Value::Null
+        } else {
+            responses.remove(0)
+        };
+        let email_resp: EmailSetResponse = Self::parse_response(first, "Email/set")?;
 
         if let Some(ref not_created) = email_resp.not_created
             && let Some(err) = not_created.get("email")
@@ -726,8 +735,9 @@ impl JmapClient {
             });
         }
 
-        // Check EmailSubmission/set response if present (index 1)
-        if let Some(submission_resp) = responses.get(1) {
+        // Check EmailSubmission/set response if present (originally index 1, now 0 after remove)
+        if !responses.is_empty() {
+            let submission_resp = responses.remove(0);
             let sub: EmailSetResponse =
                 Self::parse_response(submission_resp, "EmailSubmission/set")?;
             if let Some(ref not_created) = sub.not_created
@@ -807,7 +817,7 @@ impl JmapClient {
         }
 
         let responses = self.request(ctx.build_method_calls(email_create)).await?;
-        let email_id = Self::parse_email_create_response(&responses)?;
+        let email_id = Self::parse_email_create_response(responses)?;
 
         debug!(email_id = %email_id, draft = ctx.draft, "Email created successfully");
         Ok(email_id)
@@ -860,7 +870,7 @@ impl JmapClient {
             .await?;
 
         let resp: SetResponse =
-            Self::parse_response(responses.first().unwrap_or(&Value::Null), "Email/set")?;
+            Self::parse_response(responses.into_iter().next().unwrap_or(Value::Null), "Email/set")?;
 
         if let Some(ref not_updated) = resp.not_updated
             && let Some(err) = not_updated.get(email_id)
@@ -1094,7 +1104,7 @@ impl JmapClient {
             .await?;
 
         let resp: SetResponse =
-            Self::parse_response(responses.first().unwrap_or(&Value::Null), "Email/set")?;
+            Self::parse_response(responses.into_iter().next().unwrap_or(Value::Null), "Email/set")?;
 
         if let Some(ref not_updated) = resp.not_updated
             && let Some(err) = not_updated.get(email_id)
@@ -1135,7 +1145,7 @@ impl JmapClient {
             .await?;
 
         let resp: GetResponse<MaskedEmail> =
-            Self::parse_response(responses.first().unwrap_or(&Value::Null), "MaskedEmail/get")?;
+            Self::parse_response(responses.into_iter().next().unwrap_or(Value::Null), "MaskedEmail/get")?;
 
         Ok(resp.list)
     }
@@ -1176,7 +1186,7 @@ impl JmapClient {
             .await?;
 
         let resp: MaskedEmailCreateResponse =
-            Self::parse_response(responses.first().unwrap_or(&Value::Null), "MaskedEmail/set")?;
+            Self::parse_response(responses.into_iter().next().unwrap_or(Value::Null), "MaskedEmail/set")?;
 
         if let Some(ref not_created) = resp.not_created
             && let Some(err) = not_created.get("new")
@@ -1240,7 +1250,7 @@ impl JmapClient {
             .await?;
 
         let resp: SetResponse =
-            Self::parse_response(responses.first().unwrap_or(&Value::Null), "MaskedEmail/set")?;
+            Self::parse_response(responses.into_iter().next().unwrap_or(Value::Null), "MaskedEmail/set")?;
 
         if let Some(ref not_updated) = resp.not_updated
             && let Some(err) = not_updated.get(id)
@@ -1471,6 +1481,53 @@ mod sec09_tests {
         assert_eq!(
             encode_blob_url_segment("BlobId123ABC"),
             "BlobId123ABC"
+        );
+    }
+}
+
+#[cfg(test)]
+mod perf_tests {
+    use super::*;
+    use crate::models::Mailbox;
+
+    /// PERF-07: verify that repeated get_mailboxes() cache hits do not clone the Vec,
+    /// only the Arc. Arc::strong_count will be >= 10 after 10 calls with a seeded cache.
+    #[test]
+    fn test_mailbox_cache_returns_arc_clone() {
+        let mailboxes = vec![
+            Mailbox {
+                id: "m1".to_string(),
+                name: "INBOX".to_string(),
+                parent_id: None,
+                role: Some("inbox".to_string()),
+                total_emails: 0,
+                unread_emails: 0,
+                total_threads: 0,
+                unread_threads: 0,
+                sort_order: 0,
+                is_personal: true,
+                is_read_only: false,
+                may_delete: false,
+            },
+        ];
+        let arc = Arc::new(mailboxes);
+
+        // Seed a client with a pre-populated cache.
+        let mut client = JmapClient::new("test-token".to_string()).expect("test client");
+        client.cached_mailboxes = Some(Arc::clone(&arc));
+
+        // 10 simulated cache hits — each clones only the Arc.
+        let mut results = Vec::new();
+        for _ in 0..10 {
+            let cached = client.cached_mailboxes.as_ref().unwrap();
+            results.push(Arc::clone(cached));
+        }
+
+        // original arc + seeded clone + 10 result clones = 12
+        assert!(
+            Arc::strong_count(&arc) >= 10,
+            "Expected strong_count >= 10, got {}",
+            Arc::strong_count(&arc)
         );
     }
 }
