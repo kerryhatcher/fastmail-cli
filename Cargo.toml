@@ -8,6 +8,14 @@ license = "MIT"
 keywords = ["cli", "email", "fastmail", "jmap"]
 categories = ["command-line-utilities", "email"]
 
+[lib]
+name = "fastmail_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "fastmail-cli"
+path = "src/main.rs"
+
 [dependencies]
 anyhow = "1.0.100"
 base64 = "0.22"

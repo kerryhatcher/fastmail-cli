@@ -1,12 +1,4 @@
-mod caldav;
-mod carddav;
-mod commands;
-mod config;
-mod error;
-mod jmap;
-mod mcp;
-mod models;
-pub mod util;
+use fastmail_cli::{caldav, commands, jmap, mcp, models, util};
 
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
@@ -968,7 +960,7 @@ async fn main() -> anyhow::Result<()> {
                 recurrence_by_day,
                 reminder_minutes,
             } => {
-                let recurrence = recurrence_freq.map(|frequency| crate::caldav::EventRecurrence {
+                let recurrence = recurrence_freq.map(|frequency| caldav::EventRecurrence {
                     frequency,
                     interval: recurrence_interval,
                     count: recurrence_count,
@@ -977,14 +969,14 @@ async fn main() -> anyhow::Result<()> {
                 });
                 let reminders = reminder_minutes
                     .into_iter()
-                    .map(|minutes_before| crate::caldav::EventReminder {
+                    .map(|minutes_before| caldav::EventReminder {
                         minutes_before,
                         action: Some("DISPLAY".to_string()),
                     })
                     .collect();
                 let attendees = attendee
                     .into_iter()
-                    .map(|email| crate::caldav::EventAttendee {
+                    .map(|email| caldav::EventAttendee {
                         email,
                         ..Default::default()
                     })
@@ -1024,7 +1016,7 @@ async fn main() -> anyhow::Result<()> {
                 reminder_minutes,
                 clear_reminders,
             } => {
-                let recurrence = recurrence_freq.map(|frequency| crate::caldav::EventRecurrence {
+                let recurrence = recurrence_freq.map(|frequency| caldav::EventRecurrence {
                     frequency,
                     interval: recurrence_interval,
                     count: recurrence_count,
@@ -1034,7 +1026,7 @@ async fn main() -> anyhow::Result<()> {
                 let reminders = (!reminder_minutes.is_empty()).then(|| {
                     reminder_minutes
                         .into_iter()
-                        .map(|minutes_before| crate::caldav::EventReminder {
+                        .map(|minutes_before| caldav::EventReminder {
                             minutes_before,
                             action: Some("DISPLAY".to_string()),
                         })
@@ -1046,7 +1038,7 @@ async fn main() -> anyhow::Result<()> {
                     (!attendee.is_empty()).then(|| {
                         attendee
                             .into_iter()
-                            .map(|email| crate::caldav::EventAttendee {
+                            .map(|email| caldav::EventAttendee {
                                 email,
                                 ..Default::default()
                             })
