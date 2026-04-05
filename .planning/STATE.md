@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Hardening & Quality
-status: executing
-stopped_at: Completed 17-quality-polish-03-PLAN.md
-last_updated: "2026-04-05T01:58:51.816Z"
+status: verifying
+stopped_at: Completed 17-quality-polish-02-PLAN.md
+last_updated: "2026-04-05T02:00:13.950Z"
 last_activity: 2026-04-05
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 23
-  completed_plans: 22
+  completed_plans: 23
   percent: 0
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-04-04)
 
 Phase: 17 (quality-polish) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-05
 
 Progress: [░░░░░░░░░░] 0%
@@ -69,6 +69,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 16-integration-test-coverage P02 | 140s | 2 tasks | 6 files |
 | Phase 17-quality-polish P01 | 3 | 1 tasks | 1 files |
 | Phase 17-quality-polish P03 | 5 | 1 tasks | 2 files |
+| Phase 17-quality-polish P02 | 5 | 1 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -119,6 +120,8 @@ Pending user decision before Phase 12 planning:
 - [Phase 16-integration-test-coverage]: wiremock up_to_n_times(1) used per PUT variant to serve create 201 first then update 204 for CRUD test
 - [Phase 16-integration-test-coverage]: send_email() issues 3 sequential POSTs (Mailbox/get, Identity/get, Email/set+Submission/set); mocked with .up_to_n_times(1) mocks in registration order
 - [Phase 17-quality-polish]: QUAL-01: Removed stale #[allow(unused_imports)] from jmap/mod.rs (Arc) and carddav/mod.rs (pub use uuid::Uuid) — both imports are actively used, annotations were leftover scaffolding suppressing nothing
+- [Phase 17-quality-polish]: SipHasher13::new_with_keys(0,0) chosen for hash_id() — stable across Rust versions, zero seed is public arbitrary constant for determinism
+- [Phase 17-quality-polish]: Golden value 17102779196494968154 recorded as compile-time contract for hash_id("John Doe") — any deviation triggers test failure before merge
 
 ### Pending Todos
 
@@ -131,6 +134,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-05T01:58:51.814Z
-Stopped at: Completed 17-quality-polish-03-PLAN.md
+Last session: 2026-04-05T02:00:13.947Z
+Stopped at: Completed 17-quality-polish-02-PLAN.md
 Resume file: None

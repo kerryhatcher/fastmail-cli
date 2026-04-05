@@ -40,7 +40,7 @@
 - [x] **Phase 14: MCP Layer Refactor** - Atomic delivery: shared AppContext DAV client pool, nonce-bound confirmation tokens, GraphQL limits, signal handling, and mutex-narrowing (completed 2026-04-04)
 - [x] **Phase 15: Performance** - Concurrent DAV fetching, targeted UID REPORT lookup, allocation reductions across JMAP and MCP layers, optional kreuzberg feature flag (completed 2026-04-05)
 - [x] **Phase 16: Integration Test Coverage** - wiremock-based tests in `tests/` verifying JMAP, send, auth, CalDAV, CardDAV, and HTTP error paths without a live server (completed 2026-04-05)
-- [ ] **Phase 17: Quality Polish** - let-else patterns, stable contact ID hashing, and stale allow cleanup
+- [x] **Phase 17: Quality Polish** - let-else patterns, stable contact ID hashing, and stale allow cleanup (completed 2026-04-05)
 
 ## Phase Details
 
@@ -130,7 +130,7 @@
   3. `cargo clippy --all-targets --all-features -- -D warnings` exits 0; stale `#[allow(unused_imports)]` annotations removed from `src/jmap/mod.rs` and `src/carddav/mod.rs`
 **Plans**: 3 plans
 - [x] 17-01-PLAN.md — let-else guard replacing triple-unwrap in download.rs (STAB-05)
-- [ ] 17-02-PLAN.md — SipHasher13 stable contact ID hasher + golden test (STAB-08)
+- [x] 17-02-PLAN.md — SipHasher13 stable contact ID hasher + golden test (STAB-08)
 - [x] 17-03-PLAN.md — Remove stale #[allow(unused_imports)] annotations (QUAL-01)
 
 ## Progress
@@ -153,4 +153,4 @@
 | 14. MCP Layer Refactor | v1.2 | 4/4 | Complete   | 2026-04-04 |
 | 15. Performance | v1.2 | 4/4 | Complete   | 2026-04-05 |
 | 16. Integration Test Coverage | v1.2 | 4/4 | Complete   | 2026-04-05 |
-| 17. Quality Polish | v1.2 | 2/3 | In Progress|  |
+| 17. Quality Polish | v1.2 | 3/3 | Complete   | 2026-04-05 |
