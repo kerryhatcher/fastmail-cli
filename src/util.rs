@@ -252,7 +252,7 @@ pub fn resize_image(
     let new_width = ((width as f64 * scale) as u32).max(1);
     let new_height = ((height as f64 * scale) as u32).max(1);
 
-    let resized = img.resize(new_width, new_height, image::imageops::FilterType::Lanczos3);
+    let resized = img.resize(new_width, new_height, image::imageops::FilterType::Triangle);
 
     // Encode as JPEG for better compression
     let mut output = Vec::new();

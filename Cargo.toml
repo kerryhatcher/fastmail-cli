@@ -45,7 +45,8 @@ secrecy = { version = "^0.10", features = ["serde"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 thiserror = "2.0.17"
-tokio = { version = "1.49.0", features = ["full"] }
+# PERF-11: narrowed from "full"; see Phase 15-04 SUMMARY for verification
+tokio = { version = "1.49.0", features = ["rt-multi-thread", "rt", "macros", "io-util", "sync", "time", "signal", "net"] }
 toml = "0.8"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
