@@ -1,0 +1,40 @@
+{
+  "username": "test@example.com",
+  "apiUrl": "{{BASE_URL}}/jmap/api/",
+  "downloadUrl": "{{BASE_URL}}/jmap/download/{accountId}/{blobId}/{name}?type={type}",
+  "uploadUrl": "{{BASE_URL}}/jmap/upload/{accountId}/",
+  "eventSourceUrl": "{{BASE_URL}}/jmap/event/",
+  "primaryAccounts": {
+    "urn:ietf:params:jmap:mail": "u1234abcd",
+    "urn:ietf:params:jmap:submission": "u1234abcd",
+    "https://www.fastmail.com/dev/maskedemail": "u1234abcd"
+  },
+  "accounts": {
+    "u1234abcd": {
+      "name": "test@example.com",
+      "isPersonal": true,
+      "isReadOnly": false,
+      "accountCapabilities": {
+        "urn:ietf:params:jmap:mail": {},
+        "urn:ietf:params:jmap:submission": {},
+        "https://www.fastmail.com/dev/maskedemail": {}
+      }
+    }
+  },
+  "capabilities": {
+    "urn:ietf:params:jmap:core": {
+      "maxSizeUpload": 250000000,
+      "maxConcurrentUpload": 4,
+      "maxSizeRequest": 10000000,
+      "maxConcurrentRequests": 4,
+      "maxCallsInRequest": 64,
+      "maxObjectsInGet": 1000,
+      "maxObjectsInSet": 1000,
+      "collationAlgorithms": []
+    },
+    "urn:ietf:params:jmap:mail": {},
+    "urn:ietf:params:jmap:submission": {},
+    "https://www.fastmail.com/dev/maskedemail": {}
+  },
+  "state": "abc123"
+}

@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:"
+               xmlns:c="urn:ietf:params:xml:ns:caldav"
+               xmlns:apple="http://apple.com/ns/ical/"
+               xmlns:cs="http://calendarserver.org/ns/">
+
+  <!-- parent collection response — no cal:calendar, will be skipped by parser -->
+  <d:response>
+    <d:href>/dav/calendars/user/test@example.com/</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:displayname>Calendars</d:displayname>
+        <d:resourcetype>
+          <d:collection/>
+        </d:resourcetype>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+
+  <d:response>
+    <d:href>/dav/calendars/user/test@example.com/Default/</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:displayname>Default</d:displayname>
+        <d:resourcetype>
+          <d:collection/>
+          <c:calendar/>
+        </d:resourcetype>
+        <d:getetag>"etag-cal1"</d:getetag>
+        <cs:getctag>ctag-cal1</cs:getctag>
+        <apple:calendar-color>#3a87ad</apple:calendar-color>
+        <apple:calendar-order>1</apple:calendar-order>
+        <c:supported-calendar-component-set>
+          <c:comp name="VEVENT"/>
+        </c:supported-calendar-component-set>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+
+  <d:response>
+    <d:href>/dav/calendars/user/test@example.com/Work/</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:displayname>Work</d:displayname>
+        <d:resourcetype>
+          <d:collection/>
+          <c:calendar/>
+        </d:resourcetype>
+        <d:getetag>"etag-cal2"</d:getetag>
+        <cs:getctag>ctag-cal2</cs:getctag>
+        <apple:calendar-color>#e74c3c</apple:calendar-color>
+        <apple:calendar-order>2</apple:calendar-order>
+        <c:supported-calendar-component-set>
+          <c:comp name="VEVENT"/>
+        </c:supported-calendar-component-set>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+
+  <d:response>
+    <d:href>/dav/calendars/user/test@example.com/Personal/</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:displayname>Personal</d:displayname>
+        <d:resourcetype>
+          <d:collection/>
+          <c:calendar/>
+        </d:resourcetype>
+        <d:getetag>"etag-cal3"</d:getetag>
+        <cs:getctag>ctag-cal3</cs:getctag>
+        <apple:calendar-color>#27ae60</apple:calendar-color>
+        <apple:calendar-order>3</apple:calendar-order>
+        <c:supported-calendar-component-set>
+          <c:comp name="VEVENT"/>
+        </c:supported-calendar-component-set>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+
+</d:multistatus>
