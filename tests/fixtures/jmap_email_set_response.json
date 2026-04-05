@@ -1,0 +1,42 @@
+{
+  "methodResponses": [
+    [
+      "Email/set",
+      {
+        "accountId": "u1234abcd",
+        "oldState": "1",
+        "newState": "2",
+        "created": {
+          "email": {
+            "id": "Email-abc123",
+            "blobId": "Blob-xyz",
+            "threadId": "Thread-1",
+            "size": 1234
+          }
+        },
+        "updated": null,
+        "destroyed": null,
+        "notCreated": null
+      },
+      "e0"
+    ],
+    [
+      "EmailSubmission/set",
+      {
+        "accountId": "u1234abcd",
+        "oldState": "1",
+        "newState": "2",
+        "created": {
+          "submission": {
+            "id": "Submission-1"
+          }
+        },
+        "updated": null,
+        "destroyed": null,
+        "notCreated": null
+      },
+      "s0"
+    ]
+  ],
+  "sessionState": "abc123"
+}

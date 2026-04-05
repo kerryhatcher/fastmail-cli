@@ -1,0 +1,26 @@
+{
+  "methodResponses": [
+    [
+      "Identity/get",
+      {
+        "accountId": "u1234abcd",
+        "state": "1",
+        "list": [
+          {
+            "id": "ID-1",
+            "name": "Test User",
+            "email": "test@example.com",
+            "replyTo": null,
+            "bcc": null,
+            "textSignature": "",
+            "htmlSignature": "",
+            "mayDelete": false
+          }
+        ],
+        "notFound": []
+      },
+      "i0"
+    ]
+  ],
+  "sessionState": "abc123"
+}

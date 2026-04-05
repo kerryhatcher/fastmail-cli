@@ -1,0 +1,49 @@
+{
+  "methodResponses": [
+    [
+      "Mailbox/get",
+      {
+        "accountId": "u1234abcd",
+        "state": "1",
+        "list": [
+          {
+            "id": "Mbox-sent",
+            "name": "Sent",
+            "role": "sent",
+            "parentId": null,
+            "sortOrder": 3,
+            "totalEmails": 0,
+            "unreadEmails": 0,
+            "totalThreads": 0,
+            "unreadThreads": 0
+          },
+          {
+            "id": "Mbox-drafts",
+            "name": "Drafts",
+            "role": "drafts",
+            "parentId": null,
+            "sortOrder": 2,
+            "totalEmails": 0,
+            "unreadEmails": 0,
+            "totalThreads": 0,
+            "unreadThreads": 0
+          },
+          {
+            "id": "Mbox-inbox",
+            "name": "Inbox",
+            "role": "inbox",
+            "parentId": null,
+            "sortOrder": 1,
+            "totalEmails": 42,
+            "unreadEmails": 5,
+            "totalThreads": 40,
+            "unreadThreads": 5
+          }
+        ],
+        "notFound": []
+      },
+      "m0"
+    ]
+  ],
+  "sessionState": "abc123"
+}
