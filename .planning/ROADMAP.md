@@ -40,7 +40,7 @@
 - [x] **Phase 14: MCP Layer Refactor** - Atomic delivery: shared AppContext DAV client pool, nonce-bound confirmation tokens, GraphQL limits, signal handling, and mutex-narrowing (completed 2026-04-04)
 - [x] **Phase 15: Performance** - Concurrent DAV fetching, targeted UID REPORT lookup, allocation reductions across JMAP and MCP layers, optional kreuzberg feature flag (completed 2026-04-05)
 - [x] **Phase 16: Integration Test Coverage** - wiremock-based tests in `tests/` verifying JMAP, send, auth, CalDAV, CardDAV, and HTTP error paths without a live server (completed 2026-04-05)
-- [ ] **Phase 17: Quality Polish** - let-else patterns, stable contact ID hashing, faster image resize filter, tokio feature trim, and stale allow cleanup
+- [ ] **Phase 17: Quality Polish** - let-else patterns, stable contact ID hashing, and stale allow cleanup
 
 ## Phase Details
 
@@ -121,18 +121,17 @@
 - [x] 16-04-PLAN.md — MCP GraphQL resolver smoke test with test AppContext
 
 ### Phase 17: Quality Polish
-**Goal**: Fragile `unwrap()` patterns are replaced with `let-else` guards, contact fallback IDs use a stable hasher, image resize uses a faster filter, tokio pulls in only the features it needs, and stale allow attributes are removed
+**Goal**: Fragile `unwrap()` patterns are replaced with `let-else` guards, contact fallback IDs use a stable hasher, and stale allow attributes are removed
 **Depends on**: Phase 12
 **Requirements**: STAB-05, STAB-08, QUAL-01
 **Success Criteria** (what must be TRUE):
-  1. `download.rs` has no triple-`unwrap()` chain; the file-name guard uses `let Some(..) else { return }`
-  2. Contact fallback IDs are identical across Rust versions and builds (stable hasher, not `DefaultHasher`)
-  3. `cargo clippy --all-targets --all-features` reports zero warnings; stale `#[allow(unused_imports)]` annotations on active imports are gone
-**Plans**: 4 plans
-- [ ] 14-01-PLAN.md — AppContext foundation (OnceCell DAV, HMAC key, schema limits)
-- [ ] 14-02-PLAN.md — Migrate resolvers to AppContext (DAV sharing, HMAC tokens, STAB-07 audit)
-- [ ] 14-03-PLAN.md — markAsSpam HMAC confirmation gate (SEC-08)
-- [x] 14-04-PLAN.md — SIGTERM/SIGINT graceful shutdown (STAB-04)
+  1. `download.rs` has no triple-`unwrap()` chain on `email.attachments`; the guard uses `let Some(attachments) = &email.attachments else { return Ok(()) }`
+  2. Contact fallback IDs are identical across Rust versions and builds (SipHasher13 with fixed seed, not `DefaultHasher`); a golden-value test pins the exact output
+  3. `cargo clippy --all-targets --all-features -- -D warnings` exits 0; stale `#[allow(unused_imports)]` annotations removed from `src/jmap/mod.rs` and `src/carddav/mod.rs`
+**Plans**: 3 plans
+- [ ] 17-01-PLAN.md — let-else guard replacing triple-unwrap in download.rs (STAB-05)
+- [ ] 17-02-PLAN.md — SipHasher13 stable contact ID hasher + golden test (STAB-08)
+- [ ] 17-03-PLAN.md — Remove stale #[allow(unused_imports)] annotations (QUAL-01)
 
 ## Progress
 
@@ -154,4 +153,4 @@
 | 14. MCP Layer Refactor | v1.2 | 4/4 | Complete   | 2026-04-04 |
 | 15. Performance | v1.2 | 4/4 | Complete   | 2026-04-05 |
 | 16. Integration Test Coverage | v1.2 | 4/4 | Complete   | 2026-04-05 |
-| 17. Quality Polish | v1.2 | 0/? | Not started | - |
+| 17. Quality Polish | v1.2 | 0/3 | Not started | - |
