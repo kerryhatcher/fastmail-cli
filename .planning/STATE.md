@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Hardening & Quality
 status: executing
-stopped_at: Completed 16-01-PLAN.md
-last_updated: "2026-04-05T01:43:40.241Z"
+stopped_at: Completed 16-04-PLAN.md
+last_updated: "2026-04-05T01:46:37.506Z"
 last_activity: 2026-04-05
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 20
-  completed_plans: 17
+  completed_plans: 18
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-04)
 ## Current Position
 
 Phase: 16 (integration-test-coverage) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-04-05
 
@@ -64,6 +64,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 15-performance P02 | 621 | 2 tasks | 5 files |
 | Phase 15-performance P04 | 413 | 2 tasks | 2 files |
 | Phase 16-integration-test-coverage P01 | 387s | 3 tasks | 10 files |
+| Phase 16 P04 | 70s | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -108,6 +109,8 @@ Pending user decision before Phase 12 planning:
 - [Phase 15-performance]: tokio narrowed from full to [rt-multi-thread, rt, macros, io-util, sync, time, signal, net]; all builds and 157 tests pass
 - [Phase 15-performance]: Triangle filter replaces Lanczos3 for attachment preview resize — lower CPU cost acceptable for MCP context window images
 - [Phase 16-integration-test-coverage]: lib/bin split uses explicit [lib] and [[bin]] Cargo.toml sections; production new() constructors delegate to new_with_*_url() with zero callsite changes
+- [Phase 16]: Used mailboxes query field (actual name in query.rs) not listMailboxes (plan template name)
+- [Phase 16]: Wiremock mounts both GET /jmap/session and POST /jmap/api/ so authenticate() + list_mailboxes() both succeed in test
 
 ### Pending Todos
 
@@ -120,6 +123,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-05T01:43:40.238Z
-Stopped at: Completed 16-01-PLAN.md
+Last session: 2026-04-05T01:46:37.503Z
+Stopped at: Completed 16-04-PLAN.md
 Resume file: None
