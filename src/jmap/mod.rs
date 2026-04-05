@@ -1494,22 +1494,17 @@ mod perf_tests {
     /// only the Arc. Arc::strong_count will be >= 10 after 10 calls with a seeded cache.
     #[test]
     fn test_mailbox_cache_returns_arc_clone() {
-        let mailboxes = vec![
-            Mailbox {
-                id: "m1".to_string(),
-                name: "INBOX".to_string(),
-                parent_id: None,
-                role: Some("inbox".to_string()),
-                total_emails: 0,
-                unread_emails: 0,
-                total_threads: 0,
-                unread_threads: 0,
-                sort_order: 0,
-                is_personal: true,
-                is_read_only: false,
-                may_delete: false,
-            },
-        ];
+        let mailboxes = vec![Mailbox {
+            id: "m1".to_string(),
+            name: "INBOX".to_string(),
+            parent_id: None,
+            role: Some("inbox".to_string()),
+            total_emails: 0,
+            unread_emails: 0,
+            total_threads: 0,
+            unread_threads: 0,
+            sort_order: 0,
+        }];
         let arc = Arc::new(mailboxes);
 
         // Seed a client with a pre-populated cache.
