@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Hardening & Quality
 status: executing
-stopped_at: Completed 15-03-PLAN.md
-last_updated: "2026-04-05T00:21:04.306Z"
+stopped_at: Completed 15-01-PLAN.md
+last_updated: "2026-04-05T00:24:29.796Z"
 last_activity: 2026-04-05
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 16
-  completed_plans: 13
+  completed_plans: 14
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-04)
 ## Current Position
 
 Phase: 15 (performance) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-04-05
 
@@ -60,6 +60,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 14-mcp-layer-refactor P02 | 320s | 2 tasks | 5 files |
 | Phase 14-mcp-layer-refactor P03 | 145s | 1 tasks | 1 files |
 | Phase 15-performance P03 | 300 | 1 tasks | 3 files |
+| Phase 15 P01 | 552s | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -94,6 +95,9 @@ Pending user decision before Phase 12 planning:
 - [Phase 14-03]: PREVIEW surfaces token in GqlStatus.message body (not new field) — avoids ripple changes to other resolvers using GqlStatus
 - [Phase 15-performance]: GqlEmail::new() precomputes 5 Arc<Vec<GqlEmailAddress>> fields; resolvers return &[T] (zero allocation per call)
 - [Phase 15-performance]: GqlEmail tuple struct replaced with named-fields struct — enables Arc fields alongside inner Email
+- [Phase 15]: collect_partial returns Ok(vec) not Err on failures — empty result + warnings is correct DAV partial-failure behavior
+- [Phase 15]: get_event_by_id UID REPORT triggers fallback when any calendar returns 400/501 (conservative)
+- [Phase 15]: xml_escape_uid escapes &, <, >, quote chars for UID embedding in REPORT XML
 
 ### Pending Todos
 
@@ -106,6 +110,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-05T00:21:04.304Z
-Stopped at: Completed 15-03-PLAN.md
+Last session: 2026-04-05T00:24:29.794Z
+Stopped at: Completed 15-01-PLAN.md
 Resume file: None

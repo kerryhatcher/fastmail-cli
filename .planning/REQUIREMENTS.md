@@ -27,7 +27,7 @@
 - [x] **STAB-03**: Confirmation-guard exit paths (spam, delete masked email, delete contact, delete calendar, delete event) emit a valid `Output::error(..)` JSON envelope instead of raw `eprintln!` + `process::exit(1)`. *(finding #11)*
 - [x] **STAB-04**: The MCP server handles SIGINT/SIGTERM gracefully, flushing pending responses before exit (or documents that `rmcp` handles it). *(finding #17)*
 - [ ] **STAB-05**: `download.rs` removes the fragile triple-`unwrap()` pattern in favor of a `let Some(..) else { return }` guard. *(finding #18)*
-- [ ] **STAB-06**: `search_contacts()` tolerates per-address-book failures — one failing book logs and continues instead of aborting the entire search. *(finding #19)*
+- [x] **STAB-06**: `search_contacts()` tolerates per-address-book failures — one failing book logs and continues instead of aborting the entire search. *(finding #19)*
 - [x] **STAB-07**: The MCP `Mutex` guard on `JmapClient` is dropped before awaiting downstream I/O so concurrent GraphQL requests are not serialized. *(finding #26)*
 - [ ] **STAB-08**: Fallback contact IDs use a stable hasher rather than `DefaultHasher`, so IDs remain consistent across Rust versions. *(finding #27)*
 - [x] **STAB-09**: `JmapClient::new()` returns a `Result` instead of `.expect()`-panicking on builder failure. *(finding #32)*
@@ -35,8 +35,8 @@
 
 ### Performance (PERF)
 
-- [ ] **PERF-01**: `list_events()` and `search_contacts()` fetch from multiple calendars/address books concurrently with partial-failure tolerance, not sequentially. *(finding #4)*
-- [ ] **PERF-02**: `get_event_by_id()` uses a targeted CalDAV REPORT (or at least a default time range) instead of fetching all events from every calendar. *(finding #5)*
+- [x] **PERF-01**: `list_events()` and `search_contacts()` fetch from multiple calendars/address books concurrently with partial-failure tolerance, not sequentially. *(finding #4)*
+- [x] **PERF-02**: `get_event_by_id()` uses a targeted CalDAV REPORT (or at least a default time range) instead of fetching all events from every calendar. *(finding #5)*
 - [x] **PERF-03**: MCP requests reuse shared `CardDavClient`/`CalDavClient` instances via `AppContext` instead of recreating them per GraphQL request. *(finding #6)*
 - [ ] **PERF-04**: Blob downloads avoid the double-allocation by returning/consuming `bytes::Bytes` instead of `Vec<u8>`. *(finding #12)*
 - [ ] **PERF-05**: `parse_response` consumes owned `serde_json::Value` instead of cloning the entire response subtree before deserializing. *(finding #13)*
@@ -91,13 +91,13 @@
 | STAB-03 | Phase 12 | Complete |
 | STAB-04 | Phase 14 | Complete |
 | STAB-05 | Phase 17 | Pending |
-| STAB-06 | Phase 15 | Pending |
+| STAB-06 | Phase 15 | Complete |
 | STAB-07 | Phase 14 | Complete |
 | STAB-08 | Phase 17 | Pending |
 | STAB-09 | Phase 12 | Complete |
 | STAB-10 | Phase 12 | Complete |
-| PERF-01 | Phase 15 | Pending |
-| PERF-02 | Phase 15 | Pending |
+| PERF-01 | Phase 15 | Complete |
+| PERF-02 | Phase 15 | Complete |
 | PERF-03 | Phase 14 | Complete |
 | PERF-04 | Phase 15 | Pending |
 | PERF-05 | Phase 15 | Pending |

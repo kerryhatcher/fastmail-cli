@@ -101,7 +101,7 @@
   3. `cargo build --no-default-features` succeeds and produces a binary without bundled pdfium; `cargo build` (default features) still includes document extraction
   4. Blob downloads return `bytes::Bytes` without a double-allocation; `parse_response` consumes owned JSON without cloning the response subtree
 **Plans**: 4 plans
-- [ ] 15-01-PLAN.md — Concurrent DAV fetches + UID-targeted REPORT (STAB-06, PERF-01, PERF-02)
+- [x] 15-01-PLAN.md — Concurrent DAV fetches + UID-targeted REPORT (STAB-06, PERF-01, PERF-02)
 - [ ] 15-02-PLAN.md — JMAP memory: Bytes blob, owned parse_response, Arc caches (PERF-04, PERF-05, PERF-07, PERF-08)
 - [x] 15-03-PLAN.md — GqlEmail Arc-shared address resolvers (PERF-10)
 - [ ] 15-04-PLAN.md — Optional extract feature + Triangle filter + narrowed tokio (PERF-06, PERF-09, PERF-11)
@@ -152,6 +152,6 @@
 | 12. Foundation Safety | v1.2 | 4/4 | Complete   | 2026-04-04 |
 | 13. Security Hardening | v1.2 | 4/4 | Complete   | 2026-04-04 |
 | 14. MCP Layer Refactor | v1.2 | 4/4 | Complete   | 2026-04-04 |
-| 15. Performance | v1.2 | 1/4 | In Progress|  |
+| 15. Performance | v1.2 | 2/4 | In Progress|  |
 | 16. Integration Test Coverage | v1.2 | 0/? | Not started | - |
 | 17. Quality Polish | v1.2 | 0/? | Not started | - |
