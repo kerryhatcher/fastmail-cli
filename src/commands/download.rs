@@ -51,7 +51,7 @@ pub async fn download_attachment(
             let content_type = attachment.content_type.clone().unwrap_or_default();
             let bytes = client.download_blob(blob_id).await?;
 
-            let text = extract_text(&bytes, &filename).await?;
+            let text = extract_text(bytes.as_ref(), &filename).await?;
 
             results.push(AttachmentContent {
                 filename,
@@ -87,43 +87,45 @@ pub async fn download_attachment(
 
         let bytes = client.download_blob(blob_id).await?;
 
-        // Resize images if --max-size specified
-        let (final_bytes, final_filename) = if let Some(max) = max_bytes {
-            let mime = if is_image(content_type, &filename) {
-                infer_image_mime(&filename).unwrap_or(content_type)
-            } else {
-                content_type
-            };
+        // Resize images if --max-size specified.
+        // `Bytes` derefs to `&[u8]`; only the resize path allocates a new Vec<u8>.
+        let (final_data, final_filename): (std::borrow::Cow<[u8]>, String) =
+            if let Some(max) = max_bytes {
+                let mime = if is_image(content_type, &filename) {
+                    infer_image_mime(&filename).unwrap_or(content_type)
+                } else {
+                    content_type
+                };
 
-            if is_image(mime, &filename) {
-                match resize_image(&bytes, mime, max) {
-                    Ok((resized, new_mime)) => {
-                        // Update extension if format changed (e.g., PNG -> JPEG)
-                        let new_filename = if new_mime == "image/jpeg"
-                            && !filename.to_lowercase().ends_with(".jpg")
-                            && !filename.to_lowercase().ends_with(".jpeg")
-                        {
-                            let stem = Path::new(&filename)
-                                .file_stem()
-                                .and_then(|s| s.to_str())
-                                .unwrap_or(&filename);
-                            format!("{}.jpg", stem)
-                        } else {
-                            filename.clone()
-                        };
-                        (resized, new_filename)
+                if is_image(mime, &filename) {
+                    match resize_image(bytes.as_ref(), mime, max) {
+                        Ok((resized, new_mime)) => {
+                            // Update extension if format changed (e.g., PNG -> JPEG)
+                            let new_filename = if new_mime == "image/jpeg"
+                                && !filename.to_lowercase().ends_with(".jpg")
+                                && !filename.to_lowercase().ends_with(".jpeg")
+                            {
+                                let stem = Path::new(&filename)
+                                    .file_stem()
+                                    .and_then(|s| s.to_str())
+                                    .unwrap_or(&filename);
+                                format!("{}.jpg", stem)
+                            } else {
+                                filename.clone()
+                            };
+                            (std::borrow::Cow::Owned(resized), new_filename)
+                        }
+                        Err(_) => (std::borrow::Cow::Borrowed(bytes.as_ref()), filename.clone()),
                     }
-                    Err(_) => (bytes, filename.clone()),
+                } else {
+                    (std::borrow::Cow::Borrowed(bytes.as_ref()), filename.clone())
                 }
             } else {
-                (bytes, filename.clone())
-            }
-        } else {
-            (bytes, filename.clone())
-        };
+                (std::borrow::Cow::Borrowed(bytes.as_ref()), filename.clone())
+            };
 
         let path = Path::new(out_dir).join(safe_filename(&final_filename));
-        std::fs::write(&path, &final_bytes)?;
+        std::fs::write(&path, &final_data)?;
 
         downloaded.push(path.to_string_lossy().to_string());
     }

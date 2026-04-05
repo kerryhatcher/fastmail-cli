@@ -106,14 +106,40 @@ impl From<Email> for GqlEmailSummary {
     }
 }
 
-/// Full email with body content and nested attachment resolution
-pub struct GqlEmail(pub Email);
+/// Full email with body content and nested attachment resolution.
+/// Address fields are precomputed once at construction and shared via Arc to avoid
+/// per-resolver-call conversion and cloning.
+pub struct GqlEmail {
+    pub inner: Email,
+    from: std::sync::Arc<Vec<GqlEmailAddress>>,
+    to: std::sync::Arc<Vec<GqlEmailAddress>>,
+    cc: std::sync::Arc<Vec<GqlEmailAddress>>,
+    bcc: std::sync::Arc<Vec<GqlEmailAddress>>,
+    reply_to: std::sync::Arc<Vec<GqlEmailAddress>>,
+}
 
 impl GqlEmail {
+    /// Construct a GqlEmail, precomputing all address fields once.
+    pub fn new(email: Email) -> Self {
+        let from = std::sync::Arc::new(convert_addrs(email.from.clone()));
+        let to = std::sync::Arc::new(convert_addrs(email.to.clone()));
+        let cc = std::sync::Arc::new(convert_addrs(email.cc.clone()));
+        let bcc = std::sync::Arc::new(convert_addrs(email.bcc.clone()));
+        let reply_to = std::sync::Arc::new(convert_addrs(email.reply_to.clone()));
+        Self {
+            inner: email,
+            from,
+            to,
+            cc,
+            bcc,
+            reply_to,
+        }
+    }
+
     /// Build attachment list from the inner email — shared by the nested resolver
     /// and the top-level `attachments`/`attachment` queries.
     pub fn make_attachments(&self) -> Vec<GqlAttachment> {
-        self.0
+        self.inner
             .attachments
             .as_ref()
             .map(|atts| {
@@ -135,72 +161,72 @@ impl GqlEmail {
 #[Object(name = "Email")]
 impl GqlEmail {
     async fn id(&self) -> &str {
-        &self.0.id
+        &self.inner.id
     }
     async fn blob_id(&self) -> Option<&str> {
-        self.0.blob_id.as_deref()
+        self.inner.blob_id.as_deref()
     }
     async fn thread_id(&self) -> Option<&str> {
-        self.0.thread_id.as_deref()
+        self.inner.thread_id.as_deref()
     }
     async fn subject(&self) -> Option<&str> {
-        self.0.subject.as_deref()
+        self.inner.subject.as_deref()
     }
-    async fn from(&self) -> Vec<GqlEmailAddress> {
-        convert_addrs(self.0.from.clone())
+    async fn from(&self) -> &[GqlEmailAddress] {
+        &self.from
     }
-    async fn to(&self) -> Vec<GqlEmailAddress> {
-        convert_addrs(self.0.to.clone())
+    async fn to(&self) -> &[GqlEmailAddress] {
+        &self.to
     }
-    async fn cc(&self) -> Vec<GqlEmailAddress> {
-        convert_addrs(self.0.cc.clone())
+    async fn cc(&self) -> &[GqlEmailAddress] {
+        &self.cc
     }
-    async fn bcc(&self) -> Vec<GqlEmailAddress> {
-        convert_addrs(self.0.bcc.clone())
+    async fn bcc(&self) -> &[GqlEmailAddress] {
+        &self.bcc
     }
-    async fn reply_to(&self) -> Vec<GqlEmailAddress> {
-        convert_addrs(self.0.reply_to.clone())
+    async fn reply_to(&self) -> &[GqlEmailAddress] {
+        &self.reply_to
     }
     async fn received_at(&self) -> Option<&str> {
-        self.0.received_at.as_deref()
+        self.inner.received_at.as_deref()
     }
     async fn sent_at(&self) -> Option<&str> {
-        self.0.sent_at.as_deref()
+        self.inner.sent_at.as_deref()
     }
     async fn preview(&self) -> Option<&str> {
-        self.0.preview.as_deref()
+        self.inner.preview.as_deref()
     }
     async fn has_attachment(&self) -> bool {
-        self.0.has_attachment
+        self.inner.has_attachment
     }
     async fn is_unread(&self) -> bool {
-        self.0.is_unread()
+        self.inner.is_unread()
     }
     async fn is_flagged(&self) -> bool {
-        self.0.is_flagged()
+        self.inner.is_flagged()
     }
     async fn is_draft(&self) -> bool {
-        self.0.is_draft()
+        self.inner.is_draft()
     }
     async fn size(&self) -> u64 {
-        self.0.size
+        self.inner.size
     }
     async fn message_id(&self) -> Option<&Vec<String>> {
-        self.0.message_id.as_ref()
+        self.inner.message_id.as_ref()
     }
     async fn in_reply_to(&self) -> Option<&Vec<String>> {
-        self.0.in_reply_to.as_ref()
+        self.inner.in_reply_to.as_ref()
     }
     async fn references(&self) -> Option<&Vec<String>> {
-        self.0.references.as_ref()
+        self.inner.references.as_ref()
     }
     /// Plain text body content
     async fn text_body(&self) -> Option<&str> {
-        self.0.text_content()
+        self.inner.text_content()
     }
     /// HTML body content
     async fn html_body(&self) -> Option<&str> {
-        self.0.html_content()
+        self.inner.html_content()
     }
     /// Attachments with metadata. Select `content` on an attachment to fetch its data (images
     /// are base64-encoded, documents have text extracted). Content is lazily resolved — only
@@ -210,12 +236,12 @@ impl GqlEmail {
     }
     /// Mailbox IDs this email belongs to
     async fn mailbox_ids(&self) -> Vec<String> {
-        self.0.mailbox_ids.keys().cloned().collect()
+        self.inner.mailbox_ids.keys().cloned().collect()
     }
 
     /// Keywords (flags) on this email: $seen, $flagged, $draft, $junk, etc.
     async fn keywords(&self) -> Vec<String> {
-        self.0.keywords.keys().cloned().collect()
+        self.inner.keywords.keys().cloned().collect()
     }
 }
 
@@ -269,7 +295,7 @@ impl GqlAttachment {
 
         // Images — resize and base64 encode
         if crate::util::is_image(mime, name) {
-            return match crate::util::resize_image(&data, mime, crate::util::MCP_IMAGE_MAX_BYTES) {
+            return match crate::util::resize_image(data.as_ref(), mime, crate::util::MCP_IMAGE_MAX_BYTES) {
                 Ok((processed_data, _mime_type)) => {
                     let base64_data = base64::Engine::encode(
                         &base64::engine::general_purpose::STANDARD,
@@ -289,7 +315,7 @@ impl GqlAttachment {
         }
 
         // Documents — extract text
-        match crate::util::extract_text(&data, name).await {
+        match crate::util::extract_text(data.as_ref(), name).await {
             Ok(Some(text)) => {
                 return Ok(GqlAttachmentContent {
                     size: data.len(),
@@ -789,9 +815,77 @@ pub struct GqlThread {
 #[Object(name = "Thread")]
 impl GqlThread {
     async fn emails(&self) -> Vec<GqlEmail> {
-        self.emails.iter().cloned().map(GqlEmail).collect()
+        self.emails.iter().cloned().map(GqlEmail::new).collect()
     }
     async fn total(&self) -> usize {
         self.total
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    fn make_email_with_from(count: usize) -> Email {
+        let from_addrs: Option<Vec<EmailAddress>> = if count > 0 {
+            Some(
+                (0..count)
+                    .map(|i| EmailAddress {
+                        name: Some(format!("Name {i}")),
+                        email: format!("addr{i}@example.com"),
+                    })
+                    .collect(),
+            )
+        } else {
+            None
+        };
+        Email {
+            id: "test-id".to_string(),
+            blob_id: None,
+            thread_id: None,
+            mailbox_ids: HashMap::new(),
+            keywords: HashMap::new(),
+            size: 0,
+            received_at: None,
+            message_id: None,
+            in_reply_to: None,
+            references: None,
+            from: from_addrs,
+            to: None,
+            cc: None,
+            bcc: None,
+            reply_to: None,
+            subject: None,
+            sent_at: None,
+            preview: None,
+            has_attachment: false,
+            text_body: None,
+            html_body: None,
+            attachments: None,
+            body_values: None,
+        }
+    }
+
+    #[test]
+    fn gqlemail_addresses_are_arc_shared() {
+        let email = make_email_with_from(3);
+        let g = GqlEmail::new(email);
+        // from has 3 elements precomputed at construction
+        assert_eq!(g.from.len(), 3);
+        // Cloning the Arc increments the strong count
+        let _h1 = Arc::clone(&g.from);
+        let _h2 = Arc::clone(&g.from);
+        assert!(Arc::strong_count(&g.from) >= 3);
+    }
+
+    #[test]
+    fn gqlemail_empty_to_is_arc_shared() {
+        let email = make_email_with_from(0);
+        let g = GqlEmail::new(email);
+        assert_eq!(g.to.len(), 0);
+        let _h = Arc::clone(&g.to);
+        assert!(Arc::strong_count(&g.to) >= 2);
     }
 }

@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use crate::commands::SearchFilter;
 use crate::error::{Error, Result};
 use crate::models::*;
@@ -6,6 +7,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, instrument};
 
@@ -871,7 +873,7 @@ impl JmapClient {
 
     /// Download a blob (attachment) by ID
     #[instrument(skip(self))]
-    pub async fn download_blob(&self, blob_id: &str) -> Result<Vec<u8>> {
+    pub async fn download_blob(&self, blob_id: &str) -> Result<Bytes> {
         let account_id = self.account_id()?;
         let session = self.session()?;
 
@@ -907,7 +909,7 @@ impl JmapClient {
         }
 
         let bytes = resp.bytes().await?;
-        Ok(bytes.to_vec())
+        Ok(bytes)
     }
 
     /// Send a reply to an existing email with proper threading headers
