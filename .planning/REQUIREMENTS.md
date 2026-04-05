@@ -40,12 +40,12 @@
 - [x] **PERF-03**: MCP requests reuse shared `CardDavClient`/`CalDavClient` instances via `AppContext` instead of recreating them per GraphQL request. *(finding #6)*
 - [x] **PERF-04**: Blob downloads avoid the double-allocation by returning/consuming `bytes::Bytes` instead of `Vec<u8>`. *(finding #12)*
 - [x] **PERF-05**: `parse_response` consumes owned `serde_json::Value` instead of cloning the entire response subtree before deserializing. *(finding #13)*
-- [ ] **PERF-06**: `kreuzberg` with `bundled-pdfium` is gated behind an optional cargo feature so the default binary is ~10–20MB smaller. *(finding #16)*
+- [x] **PERF-06**: `kreuzberg` with `bundled-pdfium` is gated behind an optional cargo feature so the default binary is ~10–20MB smaller. *(finding #16)*
 - [x] **PERF-07**: Mailbox cache returns `Arc<Vec<Mailbox>>` instead of cloning the vector per request. *(finding #20)*
 - [x] **PERF-08**: `available_capabilities` is not cloned per JMAP request (reuses `Arc` or returns a reference). *(finding #21)*
-- [ ] **PERF-09**: MCP image resize uses `Triangle` or `CatmullRom` instead of `Lanczos3` to reduce CPU cost on attachment previews. *(finding #22)*
+- [x] **PERF-09**: MCP image resize uses `Triangle` or `CatmullRom` instead of `Lanczos3` to reduce CPU cost on attachment previews. *(finding #22)*
 - [x] **PERF-10**: `GqlEmail` GraphQL resolvers stop cloning address vectors on every field resolution (`From`, `To`, `Cc`, `Bcc`, `ReplyTo`). *(finding #31)*
-- [ ] **PERF-11**: `tokio` is pulled in with a narrowed feature subset (~5 features) instead of `full`, reducing compile time. *(finding #29)*
+- [x] **PERF-11**: `tokio` is pulled in with a narrowed feature subset (~5 features) instead of `full`, reducing compile time. *(finding #29)*
 
 ### Testing (TEST)
 
@@ -101,12 +101,12 @@
 | PERF-03 | Phase 14 | Complete |
 | PERF-04 | Phase 15 | Complete |
 | PERF-05 | Phase 15 | Complete |
-| PERF-06 | Phase 15 | Pending |
+| PERF-06 | Phase 15 | Complete |
 | PERF-07 | Phase 15 | Complete |
 | PERF-08 | Phase 15 | Complete |
-| PERF-09 | Phase 15 | Pending |
+| PERF-09 | Phase 15 | Complete |
 | PERF-10 | Phase 15 | Complete |
-| PERF-11 | Phase 15 | Pending |
+| PERF-11 | Phase 15 | Complete |
 | TEST-01 | Phase 16 | Pending |
 | QUAL-01 | Phase 17 | Pending |
 

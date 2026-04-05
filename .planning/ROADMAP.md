@@ -38,7 +38,7 @@
 - [x] **Phase 12: Foundation Safety** - Establish the safe baseline: HTTP 4xx surfacing, DAV timeouts, JSON output contract, path traversal defense, secret redaction, and constructor hardening (completed 2026-04-04)
 - [x] **Phase 13: Security Hardening** - Injection escaping for vCard/iCal serialization, URL encoding for blob download URLs, and auth token input documentation (completed 2026-04-04)
 - [x] **Phase 14: MCP Layer Refactor** - Atomic delivery: shared AppContext DAV client pool, nonce-bound confirmation tokens, GraphQL limits, signal handling, and mutex-narrowing (completed 2026-04-04)
-- [ ] **Phase 15: Performance** - Concurrent DAV fetching, targeted UID REPORT lookup, allocation reductions across JMAP and MCP layers, optional kreuzberg feature flag
+- [x] **Phase 15: Performance** - Concurrent DAV fetching, targeted UID REPORT lookup, allocation reductions across JMAP and MCP layers, optional kreuzberg feature flag (completed 2026-04-05)
 - [ ] **Phase 16: Integration Test Coverage** - wiremock-based tests in `tests/` verifying JMAP, send, auth, CalDAV, CardDAV, and HTTP error paths without a live server
 - [ ] **Phase 17: Quality Polish** - let-else patterns, stable contact ID hashing, faster image resize filter, tokio feature trim, and stale allow cleanup
 
@@ -104,7 +104,7 @@
 - [x] 15-01-PLAN.md — Concurrent DAV fetches + UID-targeted REPORT (STAB-06, PERF-01, PERF-02)
 - [x] 15-02-PLAN.md — JMAP memory: Bytes blob, owned parse_response, Arc caches (PERF-04, PERF-05, PERF-07, PERF-08)
 - [x] 15-03-PLAN.md — GqlEmail Arc-shared address resolvers (PERF-10)
-- [ ] 15-04-PLAN.md — Optional extract feature + Triangle filter + narrowed tokio (PERF-06, PERF-09, PERF-11)
+- [x] 15-04-PLAN.md — Optional extract feature + Triangle filter + narrowed tokio (PERF-06, PERF-09, PERF-11)
 
 ### Phase 16: Integration Test Coverage
 **Goal**: The JMAP send, auth, and error-path behaviors, CalDAV concurrent fetch with partial-failure tolerance, and CardDAV CRUD flows are verifiable via a wiremock-based integration test suite that runs without a live Fastmail account
@@ -152,6 +152,6 @@
 | 12. Foundation Safety | v1.2 | 4/4 | Complete   | 2026-04-04 |
 | 13. Security Hardening | v1.2 | 4/4 | Complete   | 2026-04-04 |
 | 14. MCP Layer Refactor | v1.2 | 4/4 | Complete   | 2026-04-04 |
-| 15. Performance | v1.2 | 3/4 | In Progress|  |
+| 15. Performance | v1.2 | 4/4 | Complete   | 2026-04-05 |
 | 16. Integration Test Coverage | v1.2 | 0/? | Not started | - |
 | 17. Quality Polish | v1.2 | 0/? | Not started | - |

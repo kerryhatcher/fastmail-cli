@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Hardening & Quality
-status: executing
-stopped_at: Completed 15-02-PLAN.md
-last_updated: "2026-04-05T00:25:21.876Z"
+status: verifying
+stopped_at: Completed 15-04-PLAN.md
+last_updated: "2026-04-05T00:34:23.257Z"
 last_activity: 2026-04-05
 progress:
   total_phases: 6
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 16
-  completed_plans: 15
+  completed_plans: 16
   percent: 0
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-04-04)
 
 Phase: 15 (performance) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-05
 
 Progress: [░░░░░░░░░░] 0%
@@ -62,6 +62,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 15-performance P03 | 300 | 1 tasks | 3 files |
 | Phase 15 P01 | 552s | 2 tasks | 5 files |
 | Phase 15-performance P02 | 621 | 2 tasks | 5 files |
+| Phase 15-performance P04 | 413 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -102,6 +103,9 @@ Pending user decision before Phase 12 planning:
 - [Phase 15-performance]: Cow<[u8]> used in download.rs to unify bytes::Bytes and Vec<u8> code paths without introducing to_vec() at call sites
 - [Phase 15-performance]: parse_response takes Value by value; arr.remove(1) extracts data element; parse_email_create_response takes Vec<Value> to enable owned extraction for two-response cases
 - [Phase 15-performance]: list_mailboxes() return type changed to Result<Arc<Vec<Mailbox>>>; callers updated to iterate via .iter().map(|m| GqlMailbox::from(m.clone()))
+- [Phase 15-performance]: kreuzberg optional=true with extract feature gate; default=[extract] preserves backward-compat binary; --no-default-features builds without pdfium
+- [Phase 15-performance]: tokio narrowed from full to [rt-multi-thread, rt, macros, io-util, sync, time, signal, net]; all builds and 157 tests pass
+- [Phase 15-performance]: Triangle filter replaces Lanczos3 for attachment preview resize — lower CPU cost acceptable for MCP context window images
 
 ### Pending Todos
 
@@ -114,6 +118,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-05T00:25:21.873Z
-Stopped at: Completed 15-02-PLAN.md
+Last session: 2026-04-05T00:34:23.254Z
+Stopped at: Completed 15-04-PLAN.md
 Resume file: None
