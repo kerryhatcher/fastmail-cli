@@ -53,7 +53,7 @@ impl QueryRoot {
         let client = ctx.data::<super::AppContext>()?.require_jmap()?;
         let client = client.lock().await;
         match client.get_email(&id).await {
-            Ok(email) => Ok(Some(GqlEmail(email))),
+            Ok(email) => Ok(Some(GqlEmail::new(email))),
             Err(crate::error::Error::EmailNotFound(_)) => Ok(None),
             Err(e) => Err(e.into()),
         }
@@ -138,7 +138,7 @@ impl QueryRoot {
         let client = ctx.data::<super::AppContext>()?.require_jmap()?;
         let client = client.lock().await;
         let email = client.get_email(&email_id).await?;
-        Ok(GqlEmail(email).make_attachments())
+        Ok(GqlEmail::new(email).make_attachments())
     }
 
     /// Get a single attachment by blob ID. Select `content` to fetch its data.
@@ -151,7 +151,7 @@ impl QueryRoot {
         let client = ctx.data::<super::AppContext>()?.require_jmap()?;
         let client = client.lock().await;
         let email = client.get_email(&email_id).await?;
-        Ok(GqlEmail(email)
+        Ok(GqlEmail::new(email)
             .make_attachments()
             .into_iter()
             .find(|a| a.blob_id == blob_id))

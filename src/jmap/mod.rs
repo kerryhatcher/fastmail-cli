@@ -7,6 +7,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
+#[allow(unused_imports)] // used in PERF-07 (15-02) — mailbox cache Arc migration
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, instrument};
@@ -298,41 +299,58 @@ impl JmapClient {
     }
 
     fn parse_response<T: for<'de> Deserialize<'de>>(
-        response: &Value,
+        response: Value,
         expected_method: &str,
     ) -> Result<T> {
-        let arr = response.as_array().ok_or_else(|| Error::Jmap {
-            method: expected_method.into(),
-            error_type: "parse".into(),
-            description: "Response is not an array".into(),
-        })?;
+        let Value::Array(mut arr) = response else {
+            return Err(Error::Jmap {
+                method: expected_method.into(),
+                error_type: "parse".into(),
+                description: "Response is not an array".into(),
+            });
+        };
 
-        let method_name = arr.first().and_then(|v: &Value| v.as_str()).unwrap_or("");
+        // arr[0] = method name, arr[1] = data, arr[2] = call id
+        let method_name = arr
+            .first()
+            .and_then(|v: &Value| v.as_str())
+            .unwrap_or("")
+            .to_owned();
 
         if method_name == "error" {
-            let error_obj = arr.get(1).unwrap_or(&Value::Null);
+            let error_obj = if arr.len() > 1 {
+                arr.remove(1)
+            } else {
+                Value::Null
+            };
             let error_type = error_obj
                 .get("type")
                 .and_then(|v: &Value| v.as_str())
-                .unwrap_or("unknown");
+                .unwrap_or("unknown")
+                .to_owned();
             let description = error_obj
                 .get("description")
                 .and_then(|v: &Value| v.as_str())
-                .unwrap_or("No description");
+                .unwrap_or("No description")
+                .to_owned();
             return Err(Error::Jmap {
                 method: expected_method.into(),
-                error_type: error_type.into(),
-                description: description.into(),
+                error_type,
+                description,
             });
         }
 
-        let data = arr.get(1).ok_or_else(|| Error::Jmap {
-            method: expected_method.into(),
-            error_type: "parse".into(),
-            description: "Missing response data".into(),
-        })?;
+        if arr.len() < 2 {
+            return Err(Error::Jmap {
+                method: expected_method.into(),
+                error_type: "parse".into(),
+                description: "Missing response data".into(),
+            });
+        }
+        // Take owned data at index 1 without cloning
+        let data = arr.remove(1);
 
-        serde_json::from_value(data.clone()).map_err(|e| Error::Jmap {
+        serde_json::from_value(data).map_err(|e| Error::Jmap {
             method: expected_method.into(),
             error_type: "parse".into(),
             description: e.to_string(),
