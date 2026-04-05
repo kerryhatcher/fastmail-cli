@@ -44,7 +44,7 @@
 - [ ] **PERF-07**: Mailbox cache returns `Arc<Vec<Mailbox>>` instead of cloning the vector per request. *(finding #20)*
 - [ ] **PERF-08**: `available_capabilities` is not cloned per JMAP request (reuses `Arc` or returns a reference). *(finding #21)*
 - [ ] **PERF-09**: MCP image resize uses `Triangle` or `CatmullRom` instead of `Lanczos3` to reduce CPU cost on attachment previews. *(finding #22)*
-- [ ] **PERF-10**: `GqlEmail` GraphQL resolvers stop cloning address vectors on every field resolution (`From`, `To`, `Cc`, `Bcc`, `ReplyTo`). *(finding #31)*
+- [x] **PERF-10**: `GqlEmail` GraphQL resolvers stop cloning address vectors on every field resolution (`From`, `To`, `Cc`, `Bcc`, `ReplyTo`). *(finding #31)*
 - [ ] **PERF-11**: `tokio` is pulled in with a narrowed feature subset (~5 features) instead of `full`, reducing compile time. *(finding #29)*
 
 ### Testing (TEST)
@@ -105,7 +105,7 @@
 | PERF-07 | Phase 15 | Pending |
 | PERF-08 | Phase 15 | Pending |
 | PERF-09 | Phase 15 | Pending |
-| PERF-10 | Phase 15 | Pending |
+| PERF-10 | Phase 15 | Complete |
 | PERF-11 | Phase 15 | Pending |
 | TEST-01 | Phase 16 | Pending |
 | QUAL-01 | Phase 17 | Pending |

@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Hardening & Quality
-status: verifying
-stopped_at: Completed 14-03-PLAN.md
-last_updated: "2026-04-04T23:56:24.040Z"
-last_activity: 2026-04-04
+status: executing
+stopped_at: Completed 15-03-PLAN.md
+last_updated: "2026-04-05T00:21:04.306Z"
+last_activity: 2026-04-05
 progress:
   total_phases: 6
   completed_phases: 3
-  total_plans: 12
-  completed_plans: 12
+  total_plans: 16
+  completed_plans: 13
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-04)
 
 **Core value:** Users can manage Fastmail data without leaving the terminal or AI assistant, with automation-friendly APIs that stay faithful to Fastmail's actual protocol boundaries
-**Current focus:** Phase 14 — mcp-layer-refactor
+**Current focus:** Phase 15 — performance
 
 ## Current Position
 
-Phase: 14 (mcp-layer-refactor) — EXECUTING
-Plan: 4 of 4
-Status: Phase complete — ready for verification
-Last activity: 2026-04-04
+Phase: 15 (performance) — EXECUTING
+Plan: 2 of 4
+Status: Ready to execute
+Last activity: 2026-04-05
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -59,6 +59,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 14 P01 | 212s | 2 tasks | 3 files |
 | Phase 14-mcp-layer-refactor P02 | 320s | 2 tasks | 5 files |
 | Phase 14-mcp-layer-refactor P03 | 145s | 1 tasks | 1 files |
+| Phase 15-performance P03 | 300 | 1 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -91,6 +92,8 @@ Pending user decision before Phase 12 planning:
 - [Phase 14-03]: Reused SpamAction enum (no MarkAsSpamAction) per RESEARCH.md Open Question 1 resolution — zero GraphQL SDL type churn
 - [Phase 14-03]: Token validation placed BEFORE require_jmap() in mark_as_spam — prevents unauthenticated JMAP lock acquisition; enables unit tests without JMAP client
 - [Phase 14-03]: PREVIEW surfaces token in GqlStatus.message body (not new field) — avoids ripple changes to other resolvers using GqlStatus
+- [Phase 15-performance]: GqlEmail::new() precomputes 5 Arc<Vec<GqlEmailAddress>> fields; resolvers return &[T] (zero allocation per call)
+- [Phase 15-performance]: GqlEmail tuple struct replaced with named-fields struct — enables Arc fields alongside inner Email
 
 ### Pending Todos
 
@@ -103,6 +106,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-04T23:56:24.038Z
-Stopped at: Completed 14-03-PLAN.md
+Last session: 2026-04-05T00:21:04.304Z
+Stopped at: Completed 15-03-PLAN.md
 Resume file: None
