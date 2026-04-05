@@ -27,8 +27,11 @@ pub async fn download_attachment(
 
     let email = client.get_email(email_id).await?;
 
-    let attachments = email.attachments.as_ref();
-    if attachments.is_none() || attachments.unwrap().is_empty() {
+    let Some(attachments) = &email.attachments else {
+        Output::<()>::error("No attachments found").print();
+        return Ok(());
+    };
+    if attachments.is_empty() {
         Output::<()>::error("No attachments found").print();
         return Ok(());
     }
@@ -37,7 +40,7 @@ pub async fn download_attachment(
     if format == Some("json") {
         let mut results: Vec<AttachmentContent> = Vec::new();
 
-        for attachment in attachments.unwrap() {
+        for attachment in attachments {
             let blob_id = match &attachment.blob_id {
                 Some(id) => id,
                 None => continue,
@@ -69,7 +72,7 @@ pub async fn download_attachment(
     let out_dir = output_dir.unwrap_or(".");
     let mut downloaded: Vec<String> = Vec::new();
 
-    for attachment in attachments.unwrap() {
+    for attachment in attachments {
         let blob_id = match &attachment.blob_id {
             Some(id) => id,
             None => continue,
