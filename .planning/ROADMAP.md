@@ -115,10 +115,10 @@
   2. Tests cover: JMAP auth flow, email send, HTTP 401/429/500/4xx error paths returning JSON, CalDAV concurrent fetch with one failing book, CardDAV CRUD round-trip, and MCP GraphQL resolver happy paths
   3. Tests live exclusively in `tests/` (top-level Cargo integration tests); no wiremock usage appears in `#[cfg(test)]` blocks inside `src/`
 **Plans**: 4 plans
-- [x] 14-01-PLAN.md — AppContext foundation (OnceCell DAV, HMAC key, schema limits)
-- [ ] 14-02-PLAN.md — Migrate resolvers to AppContext (DAV sharing, HMAC tokens, STAB-07 audit)
-- [ ] 14-03-PLAN.md — markAsSpam HMAC confirmation gate (SEC-08)
-- [x] 14-04-PLAN.md — SIGTERM/SIGINT graceful shutdown (STAB-04)
+- [ ] 16-01-PLAN.md — Test infrastructure: wiremock dev-dep + URL-override constructors + tests/common harness
+- [ ] 16-02-PLAN.md — JMAP integration tests: auth, send wire-format, 401/429/500/4xx error mapping
+- [ ] 16-03-PLAN.md — DAV integration tests: CalDAV concurrent partial-failure + CardDAV CRUD round-trip
+- [ ] 16-04-PLAN.md — MCP GraphQL resolver smoke test with test AppContext
 
 ### Phase 17: Quality Polish
 **Goal**: Fragile `unwrap()` patterns are replaced with `let-else` guards, contact fallback IDs use a stable hasher, image resize uses a faster filter, tokio pulls in only the features it needs, and stale allow attributes are removed
@@ -153,5 +153,5 @@
 | 13. Security Hardening | v1.2 | 4/4 | Complete   | 2026-04-04 |
 | 14. MCP Layer Refactor | v1.2 | 4/4 | Complete   | 2026-04-04 |
 | 15. Performance | v1.2 | 4/4 | Complete   | 2026-04-05 |
-| 16. Integration Test Coverage | v1.2 | 0/? | Not started | - |
+| 16. Integration Test Coverage | v1.2 | 0/4 | Not started | - |
 | 17. Quality Polish | v1.2 | 0/? | Not started | - |
