@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">
+  <d:response>
+    <d:href>/dav/addressbooks/user/test@example.com/Default/contact-1.vcf</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:getetag>"etag-1"</d:getetag>
+        <card:address-data>BEGIN:VCARD
+VERSION:3.0
+UID:contact-1
+FN:Alice Example
+EMAIL;TYPE=WORK:alice@example.com
+END:VCARD</card:address-data>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+</d:multistatus>

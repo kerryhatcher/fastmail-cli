@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">
+  <d:response>
+    <d:href>/dav/addressbooks/user/test@example.com/Default/contact-1.vcf</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:getetag>"etag-1"</d:getetag>
+      </d:prop>
+      <d:status>HTTP/1.1 201 Created</d:status>
+    </d:propstat>
+  </d:response>
+</d:multistatus>
