@@ -860,8 +860,11 @@ pub fn serialize_vcard(contact: &Contact) -> String {
 
 /// Simple SipHash-based hash for generating stable contact IDs
 fn hash_id(s: &str) -> u64 {
+    use siphasher::sip::SipHasher13;
     use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    // Fixed seed ensures stable IDs across Rust versions (D-02, D-04).
+    // Key values are arbitrary public constants — determinism, not secrecy.
+    let mut hasher = SipHasher13::new_with_keys(0, 0);
     s.hash(&mut hasher);
     hasher.finish()
 }
@@ -1536,6 +1539,34 @@ END:VCARD</card:address-data>
         let parsed = parse_vcard(&serialized, None, None).unwrap();
         assert_eq!(parsed.name, contact.name);
         assert_eq!(parsed.organization, contact.organization);
+    }
+
+    /// Golden-value test: pins the exact SipHasher13 output for a known input (D-04).
+    /// If this test breaks, the hasher or its seed has changed — contact IDs would
+    /// silently shift for contacts without a UID in the vCard.
+    #[test]
+    fn hash_id_golden() {
+        // Computed once with SipHasher13::new_with_keys(0, 0) and recorded here.
+        // Do NOT change this value; instead investigate why the hash changed.
+        assert_eq!(hash_id("John Doe"), 17102779196494968154u64);
+    }
+
+    #[test]
+    fn hash_id_deterministic() {
+        // Same input must produce the same output on every call.
+        assert_eq!(hash_id("John Doe"), hash_id("John Doe"));
+    }
+
+    #[test]
+    fn hash_id_distinct_inputs() {
+        // Distinct single-char inputs must not trivially collide.
+        assert_ne!(hash_id("a"), hash_id("b"));
+    }
+
+    #[test]
+    fn hash_id_empty_string_deterministic() {
+        // Empty string must produce a stable, non-panicking result.
+        assert_eq!(hash_id(""), hash_id(""));
     }
 
     #[test]
