@@ -66,6 +66,9 @@ sha2 = "0.10"
 rand_core = { version = "0.9", features = ["os_rng"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 
+[dev-dependencies]
+wiremock = "0.6"
+
 [features]
 default = ["extract"]
 extract = ["dep:kreuzberg"]

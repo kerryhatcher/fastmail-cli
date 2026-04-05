@@ -94,10 +94,21 @@ pub struct CalDavClient {
     client: Client,
     username: String,
     app_password: String,
+    base_url: String,
 }
 
 impl CalDavClient {
+    /// Create a new CalDAV client pointing at the production Fastmail server.
     pub fn new(username: String, app_password: String) -> Result<Self> {
+        Self::new_with_base_url(username, app_password, CALDAV_BASE.to_string())
+    }
+
+    /// Create a new CalDAV client with a custom base URL (for testing).
+    pub fn new_with_base_url(
+        username: String,
+        app_password: String,
+        base_url: String,
+    ) -> Result<Self> {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
@@ -106,6 +117,7 @@ impl CalDavClient {
             client,
             username,
             app_password,
+            base_url,
         })
     }
 
@@ -121,7 +133,7 @@ impl CalDavClient {
     #[instrument(skip(self))]
     async fn discover_calendar_home_via_principal(&self) -> Result<String> {
         let principal_href = format!("/dav/principals/user/{}/", self.username);
-        let url = format!("{CALDAV_BASE}{principal_href}");
+        let url = format!("{}{principal_href}", self.base_url);
         let body = r#"<?xml version="1.0" encoding="utf-8"?>
 <d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
   <d:prop>
@@ -154,7 +166,7 @@ impl CalDavClient {
     #[instrument(skip(self))]
     pub async fn list_calendars(&self) -> Result<Vec<Calendar>> {
         let home = self.discover_calendar_home().await?;
-        let url = format!("{CALDAV_BASE}{home}");
+        let url = format!("{}{home}", self.base_url);
         let body = r#"<?xml version="1.0" encoding="utf-8"?>
 <d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:apple="http://apple.com/ns/ical/">
   <d:prop>
@@ -221,7 +233,7 @@ impl CalDavClient {
             home.trim_end_matches('/'),
             Uuid::new_v4().simple()
         ) + "/";
-        let url = format!("{CALDAV_BASE}{href}");
+        let url = format!("{}{href}", self.base_url);
         let body = mkcalendar_body(name, color);
 
         let response = self
@@ -267,7 +279,7 @@ impl CalDavClient {
         name: Option<&str>,
         color: Option<&str>,
     ) -> Result<Calendar> {
-        let url = format!("{CALDAV_BASE}{}", calendar.href);
+        let url = format!("{}{}", self.base_url, calendar.href);
         let body = proppatch_calendar_body(
             name.unwrap_or(&calendar.name),
             color.or(calendar.color.as_deref()),
@@ -307,7 +319,7 @@ impl CalDavClient {
 
     #[instrument(skip(self))]
     pub async fn delete_calendar(&self, calendar: &Calendar) -> Result<()> {
-        let url = format!("{CALDAV_BASE}{}", calendar.href);
+        let url = format!("{}{}", self.base_url, calendar.href);
         let mut request = self
             .client
             .delete(&url)
@@ -386,7 +398,7 @@ impl CalDavClient {
         start: Option<DateTime<Utc>>,
         end: Option<DateTime<Utc>>,
     ) -> Result<Vec<CalendarEvent>> {
-        let url = format!("{CALDAV_BASE}{}", calendar.href);
+        let url = format!("{}{}", self.base_url, calendar.href);
         let body = calendar_query_body(start, end);
         let response = self
             .client
@@ -432,7 +444,7 @@ impl CalDavClient {
                 let cal = calendar.clone();
                 let body = report_body.clone();
                 async move {
-                    let url = format!("{CALDAV_BASE}{}", cal.href);
+                    let url = format!("{}{}", self.base_url, cal.href);
                     let response = self
                         .client
                         .request(Method::from_bytes(b"REPORT").unwrap(), &url)
@@ -531,7 +543,7 @@ impl CalDavClient {
             None => self.default_calendar().await?,
         };
         let href = build_event_href(&calendar.href, &event.id);
-        let url = format!("{CALDAV_BASE}{href}");
+        let url = format!("{}{href}", self.base_url);
         let body = serialize_ical_event(event);
         let response = self
             .client
@@ -573,7 +585,7 @@ impl CalDavClient {
             .href
             .clone()
             .ok_or_else(|| Error::EventNotFound(event.id.clone()))?;
-        let url = format!("{CALDAV_BASE}{href}");
+        let url = format!("{}{href}", self.base_url);
         let body = serialize_ical_event(event);
         let response = self
             .client
@@ -620,7 +632,7 @@ impl CalDavClient {
             server_etag: None,
         })?;
 
-        let url = format!("{CALDAV_BASE}{href}");
+        let url = format!("{}{href}", self.base_url);
         let response = self
             .client
             .delete(&url)

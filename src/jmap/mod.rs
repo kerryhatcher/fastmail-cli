@@ -34,6 +34,7 @@ fn encode_blob_url_segment(s: &str) -> String {
 pub struct JmapClient {
     client: Client,
     token: String,
+    session_url: String,
     session: Option<Session>,
     available_capabilities: Arc<Vec<String>>,
     cached_mailboxes: Option<Arc<Vec<Mailbox>>>,
@@ -189,7 +190,13 @@ fn pick_identity(identities: Vec<Identity>, from: Option<&str>) -> Result<Identi
 }
 
 impl JmapClient {
+    /// Create a new JMAP client pointing at the production Fastmail session endpoint.
     pub fn new(token: String) -> Result<Self> {
+        Self::new_with_session_url(token, SESSION_URL.to_string())
+    }
+
+    /// Create a new JMAP client with a custom session URL (for testing).
+    pub fn new_with_session_url(token: String, session_url: String) -> Result<Self> {
         let client = Client::builder()
             .timeout(TIMEOUT)
             .build()
@@ -197,6 +204,7 @@ impl JmapClient {
         Ok(Self {
             client,
             token,
+            session_url,
             session: None,
             available_capabilities: Arc::new(Vec::new()),
             cached_mailboxes: None,
@@ -208,7 +216,7 @@ impl JmapClient {
         debug!("Fetching JMAP session");
         let resp = self
             .client
-            .get(SESSION_URL)
+            .get(&self.session_url)
             .bearer_auth(&self.token)
             .send()
             .await?;

@@ -75,10 +75,21 @@ pub struct CardDavClient {
     client: Client,
     username: String,
     app_password: String,
+    base_url: String,
 }
 
 impl CardDavClient {
+    /// Create a new CardDAV client pointing at the production Fastmail server.
     pub fn new(username: String, app_password: String) -> Result<Self> {
+        Self::new_with_base_url(username, app_password, CARDDAV_BASE.to_string())
+    }
+
+    /// Create a new CardDAV client with a custom base URL (for testing).
+    pub fn new_with_base_url(
+        username: String,
+        app_password: String,
+        base_url: String,
+    ) -> Result<Self> {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
@@ -87,13 +98,14 @@ impl CardDavClient {
             client,
             username,
             app_password,
+            base_url,
         })
     }
 
     /// Discover address books for the user
     #[instrument(skip(self))]
     pub async fn list_addressbooks(&self) -> Result<Vec<AddressBook>> {
-        let url = format!("{}/dav/addressbooks/user/{}/", CARDDAV_BASE, self.username);
+        let url = format!("{}/dav/addressbooks/user/{}/", self.base_url, self.username);
 
         let body = r#"<?xml version="1.0" encoding="utf-8"?>
 <d:propfind xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">
@@ -181,7 +193,7 @@ impl CardDavClient {
     /// List all contacts in an address book
     #[instrument(skip(self))]
     pub async fn list_contacts(&self, addressbook_href: &str) -> Result<Vec<Contact>> {
-        let url = format!("{}{}", CARDDAV_BASE, addressbook_href);
+        let url = format!("{}{}", self.base_url, addressbook_href);
 
         let body = r#"<?xml version="1.0" encoding="utf-8"?>
 <card:addressbook-query xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">
@@ -234,8 +246,9 @@ impl CardDavClient {
                 let client = self.client.clone();
                 let username = self.username.clone();
                 let app_password = self.app_password.clone();
+                let base_url = self.base_url.clone();
                 async move {
-                    let url = format!("{}{}", CARDDAV_BASE, href);
+                    let url = format!("{}{}", base_url, href);
                     let body = r#"<?xml version="1.0" encoding="utf-8"?>
 <card:addressbook-query xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">
   <d:prop>
@@ -321,7 +334,7 @@ impl CardDavClient {
         contact: &Contact,
     ) -> Result<ContactCreateResult> {
         let href = build_contact_href(addressbook_href, &contact.id);
-        let url = format!("{}{}", CARDDAV_BASE, href);
+        let url = format!("{}{}", self.base_url, href);
         let vcard = serialize_vcard(contact);
 
         let response = self
@@ -356,7 +369,7 @@ impl CardDavClient {
         etag: &str,
         contact: &Contact,
     ) -> Result<String> {
-        let url = format!("{}{}", CARDDAV_BASE, href);
+        let url = format!("{}{}", self.base_url, href);
         let vcard = serialize_vcard(contact);
 
         let response = self
@@ -383,7 +396,7 @@ impl CardDavClient {
 
     #[instrument(skip(self))]
     pub async fn delete_contact(&self, href: &str, etag: &str, contact_id: &str) -> Result<()> {
-        let url = format!("{}{}", CARDDAV_BASE, href);
+        let url = format!("{}{}", self.base_url, href);
 
         let response = self
             .client
