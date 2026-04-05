@@ -39,7 +39,7 @@
 - [x] **Phase 13: Security Hardening** - Injection escaping for vCard/iCal serialization, URL encoding for blob download URLs, and auth token input documentation (completed 2026-04-04)
 - [x] **Phase 14: MCP Layer Refactor** - Atomic delivery: shared AppContext DAV client pool, nonce-bound confirmation tokens, GraphQL limits, signal handling, and mutex-narrowing (completed 2026-04-04)
 - [x] **Phase 15: Performance** - Concurrent DAV fetching, targeted UID REPORT lookup, allocation reductions across JMAP and MCP layers, optional kreuzberg feature flag (completed 2026-04-05)
-- [ ] **Phase 16: Integration Test Coverage** - wiremock-based tests in `tests/` verifying JMAP, send, auth, CalDAV, CardDAV, and HTTP error paths without a live server
+- [x] **Phase 16: Integration Test Coverage** - wiremock-based tests in `tests/` verifying JMAP, send, auth, CalDAV, CardDAV, and HTTP error paths without a live server (completed 2026-04-05)
 - [ ] **Phase 17: Quality Polish** - let-else patterns, stable contact ID hashing, faster image resize filter, tokio feature trim, and stale allow cleanup
 
 ## Phase Details
@@ -116,7 +116,7 @@
   3. Tests live exclusively in `tests/` (top-level Cargo integration tests); no wiremock usage appears in `#[cfg(test)]` blocks inside `src/`
 **Plans**: 4 plans
 - [x] 16-01-PLAN.md — Test infrastructure: wiremock dev-dep + URL-override constructors + tests/common harness
-- [ ] 16-02-PLAN.md — JMAP integration tests: auth, send wire-format, 401/429/500/4xx error mapping
+- [x] 16-02-PLAN.md — JMAP integration tests: auth, send wire-format, 401/429/500/4xx error mapping
 - [x] 16-03-PLAN.md — DAV integration tests: CalDAV concurrent partial-failure + CardDAV CRUD round-trip
 - [x] 16-04-PLAN.md — MCP GraphQL resolver smoke test with test AppContext
 
@@ -153,5 +153,5 @@
 | 13. Security Hardening | v1.2 | 4/4 | Complete   | 2026-04-04 |
 | 14. MCP Layer Refactor | v1.2 | 4/4 | Complete   | 2026-04-04 |
 | 15. Performance | v1.2 | 4/4 | Complete   | 2026-04-05 |
-| 16. Integration Test Coverage | v1.2 | 3/4 | In Progress|  |
+| 16. Integration Test Coverage | v1.2 | 4/4 | Complete   | 2026-04-05 |
 | 17. Quality Polish | v1.2 | 0/? | Not started | - |
