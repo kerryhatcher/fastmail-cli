@@ -10,8 +10,6 @@ use reqwest::{
 use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, instrument, warn};
-// Uuid is imported for use by callers (Phase 3: create_contact will call Uuid::new_v4())
-#[allow(unused_imports)]
 pub use uuid::Uuid;
 
 use crate::error::{Error, Result};

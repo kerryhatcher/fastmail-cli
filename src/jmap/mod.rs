@@ -7,7 +7,6 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
-#[allow(unused_imports)] // used in PERF-07 (15-02) — mailbox cache Arc migration
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, instrument};
