@@ -129,9 +129,9 @@
   2. Contact fallback IDs are identical across Rust versions and builds (SipHasher13 with fixed seed, not `DefaultHasher`); a golden-value test pins the exact output
   3. `cargo clippy --all-targets --all-features -- -D warnings` exits 0; stale `#[allow(unused_imports)]` annotations removed from `src/jmap/mod.rs` and `src/carddav/mod.rs`
 **Plans**: 3 plans
-- [ ] 17-01-PLAN.md — let-else guard replacing triple-unwrap in download.rs (STAB-05)
+- [x] 17-01-PLAN.md — let-else guard replacing triple-unwrap in download.rs (STAB-05)
 - [ ] 17-02-PLAN.md — SipHasher13 stable contact ID hasher + golden test (STAB-08)
-- [ ] 17-03-PLAN.md — Remove stale #[allow(unused_imports)] annotations (QUAL-01)
+- [x] 17-03-PLAN.md — Remove stale #[allow(unused_imports)] annotations (QUAL-01)
 
 ## Progress
 
@@ -153,4 +153,4 @@
 | 14. MCP Layer Refactor | v1.2 | 4/4 | Complete   | 2026-04-04 |
 | 15. Performance | v1.2 | 4/4 | Complete   | 2026-04-05 |
 | 16. Integration Test Coverage | v1.2 | 4/4 | Complete   | 2026-04-05 |
-| 17. Quality Polish | v1.2 | 0/3 | Not started | - |
+| 17. Quality Polish | v1.2 | 2/3 | In Progress|  |
