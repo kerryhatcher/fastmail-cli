@@ -115,7 +115,7 @@
   2. Tests cover: JMAP auth flow, email send, HTTP 401/429/500/4xx error paths returning JSON, CalDAV concurrent fetch with one failing book, CardDAV CRUD round-trip, and MCP GraphQL resolver happy paths
   3. Tests live exclusively in `tests/` (top-level Cargo integration tests); no wiremock usage appears in `#[cfg(test)]` blocks inside `src/`
 **Plans**: 4 plans
-- [ ] 16-01-PLAN.md — Test infrastructure: wiremock dev-dep + URL-override constructors + tests/common harness
+- [x] 16-01-PLAN.md — Test infrastructure: wiremock dev-dep + URL-override constructors + tests/common harness
 - [ ] 16-02-PLAN.md — JMAP integration tests: auth, send wire-format, 401/429/500/4xx error mapping
 - [ ] 16-03-PLAN.md — DAV integration tests: CalDAV concurrent partial-failure + CardDAV CRUD round-trip
 - [ ] 16-04-PLAN.md — MCP GraphQL resolver smoke test with test AppContext
@@ -153,5 +153,5 @@
 | 13. Security Hardening | v1.2 | 4/4 | Complete   | 2026-04-04 |
 | 14. MCP Layer Refactor | v1.2 | 4/4 | Complete   | 2026-04-04 |
 | 15. Performance | v1.2 | 4/4 | Complete   | 2026-04-05 |
-| 16. Integration Test Coverage | v1.2 | 0/4 | Not started | - |
+| 16. Integration Test Coverage | v1.2 | 1/4 | In Progress|  |
 | 17. Quality Polish | v1.2 | 0/? | Not started | - |

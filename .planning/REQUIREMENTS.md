@@ -49,7 +49,7 @@
 
 ### Testing (TEST)
 
-- [ ] **TEST-01**: A wiremock-based integration test suite in `tests/` covers the JMAP request/response cycle, authentication flow, email send flow, GraphQL query/mutation resolvers, MCP server startup, CalDAV event CRUD HTTP interaction, and HTTP error paths (401, 429, 500, 4xx). *(finding #7)*
+- [x] **TEST-01**: A wiremock-based integration test suite in `tests/` covers the JMAP request/response cycle, authentication flow, email send flow, GraphQL query/mutation resolvers, MCP server startup, CalDAV event CRUD HTTP interaction, and HTTP error paths (401, 429, 500, 4xx). *(finding #7)*
 
 ### Code Quality (QUAL)
 
@@ -107,7 +107,7 @@
 | PERF-09 | Phase 15 | Complete |
 | PERF-10 | Phase 15 | Complete |
 | PERF-11 | Phase 15 | Complete |
-| TEST-01 | Phase 16 | Pending |
+| TEST-01 | Phase 16 | Complete |
 | QUAL-01 | Phase 17 | Pending |
 
 ---
