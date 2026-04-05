@@ -23,7 +23,7 @@ image = { version = "0.25", default-features = false, features = [
   "png",
   "webp"
 ] }
-kreuzberg = { version = "~4.4", features = [
+kreuzberg = { version = "~4.4", optional = true, features = [
   "archives",
   "bundled-pdfium",
   "email",
@@ -56,6 +56,10 @@ hmac = "0.12"
 sha2 = "0.10"
 rand_core = { version = "0.9", features = ["os_rng"] }
 tokio-util = { version = "0.7", features = ["rt"] }
+
+[features]
+default = ["extract"]
+extract = ["dep:kreuzberg"]
 
 [profile.release]
 strip = true

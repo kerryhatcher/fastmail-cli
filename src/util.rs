@@ -35,6 +35,7 @@ pub fn parse_addresses(input: &str) -> Vec<EmailAddress> {
 /// Supports: PDF, DOC, DOCX, ODT, XLSX, XLS, ODS, PPTX, PPT, EPUB, RTF,
 /// HTML, XML, JSON, YAML, CSV, TSV, TXT, MD, EML, MSG, and more
 /// NOTE: Returns None for images - use existing image pipeline instead
+#[cfg(feature = "extract")]
 pub async fn extract_text(bytes: &[u8], filename: &str) -> anyhow::Result<Option<String>> {
     use kreuzberg::{ExtractionConfig, extract_bytes};
 
@@ -62,7 +63,16 @@ pub async fn extract_text(bytes: &[u8], filename: &str) -> anyhow::Result<Option
     }
 }
 
+/// Stub: document extraction not available in this build (compile without the `extract` feature to use)
+#[cfg(not(feature = "extract"))]
+pub async fn extract_text(_bytes: &[u8], _filename: &str) -> anyhow::Result<Option<String>> {
+    Ok(Some(
+        "document extraction not enabled in this build".to_string(),
+    ))
+}
+
 /// Check if filename has an image extension (used to skip kreuzberg for images)
+#[cfg(feature = "extract")]
 fn is_image_extension(filename: &str) -> bool {
     let ext = Path::new(filename)
         .extension()
@@ -76,6 +86,7 @@ fn is_image_extension(filename: &str) -> bool {
 }
 
 /// Infer MIME type from filename extension for documents
+#[cfg(feature = "extract")]
 fn mime_from_filename(filename: &str) -> String {
     let ext = Path::new(filename)
         .extension()
