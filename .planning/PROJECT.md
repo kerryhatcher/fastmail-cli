@@ -41,7 +41,7 @@ Users can manage Fastmail data without leaving the terminal or AI assistant, wit
 
 ### Active
 
-(Defined during v1.2 requirements step — see REQUIREMENTS.md)
+(Defined during v1.3 requirements step — see REQUIREMENTS.md)
 
 ### Out of Scope
 
@@ -88,18 +88,16 @@ Users can manage Fastmail data without leaving the terminal or AI assistant, wit
 | Require both --start and --end for explicit ranges | Avoids ambiguous one-bound semantics in event listing | ✓ Shipped in v1.1 |
 | --clear-attendees flag conflicts with --attendee | Prevents ambiguous intent when clearing vs setting attendees | ✓ Shipped in v1.1 |
 
-## Current Milestone: v1.2 Hardening & Quality
+## Current Milestone: v1.3 Contact Groups
 
-**Goal:** Close all 33 findings from the codebase review, landing security fixes, stability guards, performance wins, and integration test coverage.
+**Goal:** Users can manage contact groups (create, list, update, delete), add/remove contacts from groups, and assign a group at contact creation time — via both CLI and MCP/GraphQL.
 
 **Target features:**
-- Security hardening (path traversal, vCard/iCal injection escaping, auth token input, secret redaction, GraphQL limits, nonce-bound tokens, URL encoding)
-- Stability guards (4xx HTTP handling, DAV timeouts, Output::error contract, MCP signal handling, unwrap removal, error tolerance)
-- Performance wins (concurrent DAV fetches, targeted event lookup, DAV client reuse, Bytes-over-Vec, owned deserialization, feature-flagged heavy deps)
-- Integration test coverage (wiremock-based JMAP/send/auth/resolver/error-path tests)
-- Code quality polish (newtyped IDs, stale allow cleanup, let-else patterns, resize filter)
-
-**Source:** `CODEBASE-REVIEW.md` (root of repo) — 33 findings across P1/P2/P3 tiers.
+- Group CRUD (create, list/get, update, delete) via CardDAV
+- Group membership management (add/remove contacts)
+- `--group` flag on `contacts create` for group assignment at creation
+- CLI commands for all group operations
+- MCP/GraphQL mutations and queries for all group operations
 
 ## Evolution
 
@@ -119,4 +117,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-04 — started milestone v1.2 Hardening & Quality*
+*Last updated: 2026-04-13 — started milestone v1.3 Contact Groups*
