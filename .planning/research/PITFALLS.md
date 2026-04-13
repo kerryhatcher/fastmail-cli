@@ -1,157 +1,215 @@
 # Pitfalls Research
 
-**Domain:** Hardening an existing async Rust CLI + MCP server (fastmail-cli v1.2)
-**Researched:** 2026-04-04
-**Confidence:** HIGH — grounded in the actual CODEBASE-REVIEW.md findings and live-validated v1.1 codebase
+**Domain:** CardDAV contact group CRUD and membership management — adding to an existing Rust CLI + MCP server targeting Fastmail
+**Researched:** 2026-04-13
+**Confidence:** HIGH for format and parsing pitfalls (multiple sources corroborate); MEDIUM for Fastmail-specific group behavior (no official Fastmail developer docs for groups exist; inferred from DAVx5 compatibility page + community migration reports)
 
 ---
 
 ## Critical Pitfalls
 
-### Pitfall 1: Timeout Addition Changes Wire Behavior for Live Fastmail Users
+### Pitfall 1: Using the Wrong Group Format for Fastmail (KIND vs. X-ADDRESSBOOKSERVER-KIND)
 
 **What goes wrong:**
-Adding a 30-second timeout to CardDAV/CalDAV clients (finding #2) is correct, but the value and placement matter. If timeout is set too aggressively (e.g., 10s), event REPORT queries that retrieve large calendar datasets across many events will start failing in prod for users with full calendars. If set only at the connection level rather than the full-request level, slow-reading Fastmail responses still hang. If both a connection timeout and a request timeout are applied, the shorter one silently wins and surprises developers expecting the longer guard to apply.
+vCard 4.0 uses `KIND:group` and `MEMBER:urn:uuid:<uid>` to represent groups. vCard 3.0 (Apple/iCloud extension) uses `X-ADDRESSBOOKSERVER-KIND:group` and `X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:<uid>`. Fastmail uses vCard 3.0 on its CardDAV server, and DAVx5's Fastmail compatibility page explicitly states "Contact group method: Groups are separate vCards." Community evidence and Apple-lineage interoperability reports consistently place Fastmail in the Apple/X-ADDRESSBOOKSERVER camp, not the vCard 4 KIND camp.
+
+If you write groups using `KIND:group` and `MEMBER:`, Fastmail stores the data (it never discards unknown properties) but its web UI does not recognize the group — it appears as a plain contact, not a group. Existing Apple clients that sync via the same account will not recognize the group either because they look for `X-ADDRESSBOOKSERVER-KIND`, not `KIND`.
 
 **Why it happens:**
-`reqwest::ClientBuilder` has three distinct timeout settings: `connect_timeout`, `timeout` (total request), and `read_timeout`. Developers often only add `timeout()` matching the JMAP 30s pattern without realizing CalDAV REPORT payloads for large calendars can legitimately take longer to stream than JMAP JSON responses. The regression is invisible in unit tests and only surfaces against a live Fastmail account with years of calendar data.
+RFC 6350 (vCard 4) is the standard and looks cleaner. Developers reading the spec implement `KIND`/`MEMBER` without checking whether the target server has actually upgraded to vCard 4. The existing `serialize_vcard()` in this codebase already produces `VERSION:3.0`; writing `KIND:group` on a 3.0 vCard is technically invalid and will confuse both Fastmail and interoperating clients.
 
 **How to avoid:**
-Match the existing JMAP pattern exactly: `Client::builder().timeout(Duration::from_secs(30)).build()`. Use the same value across all three DAV clients (CardDAV, CalDAV) for consistency. Do not add `connect_timeout` separately unless you have evidence the value differs from request timeout in this codebase. Add a comment citing the JMAP client as the source of the 30s constant so future editors keep them in sync.
+Always emit `X-ADDRESSBOOKSERVER-KIND:group` and `X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:<uid>` for groups when the server uses vCard 3.0. Check the `VERSION` line in the existing `serialize_vcard()` — it hardcodes `VERSION:3.0`, confirming the correct family is `X-ADDRESSBOOKSERVER-*`. Write a separate `serialize_group_vcard()` function (or extend `serialize_vcard()` with a `kind: Option<ContactKind>` parameter) that emits the Apple-extension properties. Do not mix vCard 4 `KIND`/`MEMBER` with `VERSION:3.0`.
 
 **Warning signs:**
-- Users with large calendar histories report `"operation timed out"` errors on `events list` after the fix
-- CI tests pass but live smoke test on a full account fails
-- The CalDAV REPORT for `list_events` with no calendar filter (fetches all calendars) is the highest-risk path
+- Group vCards stored on Fastmail do not appear as groups in Fastmail's web UI after creation
+- A `list_contacts()` REPORT returns the group vCard with a name but no `X-ADDRESSBOOKSERVER-KIND` line in the returned `address-data`
+- Apple Contacts.app syncing the same account ignores your programmatically created groups
 
 **Phase to address:**
-Security/Stability hardening phase (P1 fixes). The exact constant should be shared or at minimum co-located with the JMAP timeout to prevent drift.
+Group CRUD foundation phase — must be verified with a live Fastmail write before any membership management work begins.
 
 ---
 
-### Pitfall 2: HTTP 4xx Catch-All Breaks Fastmail-Specific Flows That Rely on Non-401 Status Codes
+### Pitfall 2: parse_vcard() Silently Discards Group vCards (Missing NAME Guard)
 
 **What goes wrong:**
-Adding a catch-all `400..500` handler (finding #1) can intercept status codes that the existing code handles downstream via JSON parsing or specific match arms. Two concrete risks in this codebase: (1) a `304 Not Modified` is technically 3xx but could be caught if the range is off-by-one; (2) if Fastmail ever returns `410 Gone` for a deleted resource and the code tries to parse it as a successful response, the new catch-all correctly surfaces an error — but callers written before the fix may expect the old `Err(serde deserialization)` error variant and have match arms that no longer trigger. The regression is silent: the error is now a different `Error::Server(...)` variant instead of `Error::Http(reqwest::Error)`.
+The existing `parse_vcard()` function returns `None` when the `FN` (full name) property is missing or empty:
+
+```
+// Need at least a name
+if name.is_empty() {
+    return None;
+}
+```
+
+A freshly created group vCard for "Work Contacts" has `FN:Work Contacts` — this is fine. But group vCards created by Apple clients or older CardDAV tools sometimes set an empty `FN` (just `FN:`) for internal groups, or omit it entirely. Any such group vCard is silently dropped by `parse_contacts_from_xml()`, making `list_contacts()` appear to succeed but return zero groups.
+
+Additionally, the current parser does not extract `X-ADDRESSBOOKSERVER-KIND` or `X-ADDRESSBOOKSERVER-MEMBER` properties at all — when `list_contacts()` returns results, the caller has no way to distinguish a group from a regular contact. This forces every caller to re-fetch and re-parse the vCard body to determine group membership.
 
 **Why it happens:**
-When callers already existed before the fix was applied, their error-handling match arms were written against the old error shape. Adding a new error path introduces a new variant that may not be caught by exhaustive matches on the caller side. Rust's type system only helps if the error type is an enum — and `anyhow::Error` used in command handlers provides no exhaustiveness check.
+`parse_vcard()` was written for contacts, which always have a name. Groups are a new first-class object type not modeled in the original design. The `Contact` struct has no `kind` or `members` field to carry group metadata.
 
 **How to avoid:**
-Audit all call sites in `src/commands/` and `src/mcp/graphql/` for `match` on `Error` after adding the 4xx catch-all. Search for any code that tests for `reqwest::Error` or deserialization errors as a proxy for "server rejected request." Run the full test suite and add a wiremock test that sends a 403 and 400 and verifies the `Output::error()` JSON is well-formed.
+Add a `ContactKind` enum (`Individual`, `Group`) and a `members: Vec<String>` field (containing bare UIDs, without `urn:uuid:` prefix — see Pitfall 4) to the `Contact` struct, or create a parallel `ContactGroup` struct. Extend `parse_vcard()` to extract the `X-ADDRESSBOOKSERVER-KIND` line and all `X-ADDRESSBOOKSERVER-MEMBER` lines, storing members in order. When `kind == Group`, relax the name-required guard (or ensure the group serializer always emits a non-empty FN). Add a `list_groups()` method on `CardDavClient` that filters `list_contacts()` results by `kind == Group`, or issues a targeted REPORT with a property filter on `X-ADDRESSBOOKSERVER-KIND`.
 
 **Warning signs:**
-- `cargo test` passes but a wiremock test for 403 panics or produces empty output
-- Command handlers that have `_ =>` catch-alls are OK; those with specific `Error::Http` arms are at risk
-- MCP mutations that previously returned `{"success": false, "error": "..."}` now return nothing on stdout (broken `process::exit` path, finding #11)
+- `contacts group list` returns an empty list even after creating a group via the CLI
+- `contacts list` returns both contacts and group vCards intermixed — the caller has no way to filter
+- Adding a contact to a group and then listing the group's members returns an empty `members` vec
 
 **Phase to address:**
-Security/Stability hardening phase. Fix #11 (process::exit JSON contract) BEFORE or alongside fix #1 to avoid the double regression of "wrong error variant" + "no JSON output."
+Group CRUD foundation phase — the data model extension must land before any mutation or membership code is written.
 
 ---
 
-### Pitfall 3: Secret Redaction Debug Impl Loses All Diagnostic Utility
+### Pitfall 3: Multiple X-ADDRESSBOOKSERVER-MEMBER Lines Silently Collapsed to One
 
 **What goes wrong:**
-Implementing `Debug` on `Config` / `CoreConfig` / `ContactsConfig` (finding #15) by redacting only `api_token` and `app_password` fields is correct, but the common over-correction is to implement `Debug` for the entire `Config` as `write!(f, "[REDACTED]")`. This redacts `username` and config path information too, making it impossible to diagnose "wrong account" bugs from a debug log without revealing secrets. The opposite failure — manually listing every field — means new fields added later silently appear unredacted in logs.
+A group vCard with three members looks like this on the wire:
+
+```
+X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:d4c1baf6-f603-4fb5-8f19-d45eb1e7fb23
+X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:b8767877-b4a1-4c70-9acc-505d3819e519
+X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:03a0e51f-d1aa-4385-8a53-e29025acd8af
+```
+
+The three lines have identical property names. The existing `parse_vcard()` loop processes lines with `if line.starts_with(...)` and simple assignment (`organization = Some(extract_value(line))`). If `X-ADDRESSBOOKSERVER-MEMBER` is naively added to this loop with a single `Option<String>` or a `=` assignment, only the last member UID is retained. This is a well-documented bug in at least one production CardDAV implementation (Nextcloud issue #9369).
 
 **Why it happens:**
-Developers writing a custom `Debug` impl choose the path of least resistance: either fully opaque or copy-paste from `derive(Debug)` output. The `secrecy` crate approach (wrapping the sensitive field in `Secret<String>`) is more composable but adds a new dependency. The manual approach requires updating the impl whenever `Config` gains a new field.
+Most vCard properties are single-valued (FN, UID, ORG). The existing parser uses scalar variables and overwrites on each match. Multi-valued properties (EMAIL, TEL, and now MEMBER) require accumulation into a `Vec`. The pattern for EMAIL and TEL already exists in `parse_vcard()` — developers adding MEMBER support must follow the Vec accumulation pattern, not the scalar assignment pattern.
 
 **How to avoid:**
-Use a targeted manual `Debug` implementation that prints non-sensitive fields normally and replaces sensitive fields with a fixed string. For `CoreConfig`, print `CoreConfig { api_token: "[REDACTED]" }` if `Some`, `CoreConfig { api_token: None }` if not set — callers can still see whether auth is configured without leaking the value. For `ContactsConfig`, print `username` in plain text (not sensitive) and redact only `app_password`. Do not add `secrecy` as a new dependency unless the project already uses it, as it adds zeroize semantics that require the wrapped type to implement `Zeroize`, constraining future config field types.
+Follow the exact pattern used for `emails: Vec<ContactEmail>` and `phones: Vec<ContactPhone>`. Declare `let mut members: Vec<String> = Vec::new();` before the loop and `members.push(uid)` inside the match arm. Serialize groups by emitting one `X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:<uid>` line per member, relying on `fold_line()` only for long UIDs (which are always short, so folding will not occur). Add a unit test that round-trips a group vCard with three members and asserts all three UIDs are present after parsing.
 
 **Warning signs:**
-- Debug output from a `tracing::debug!("{:?}", config)` call in a test log shows `[REDACTED]` for the username field — useful information lost
-- New config fields (e.g., a future `calendars.username` field) appear unredacted after being added without updating the manual `Debug` impl
-- `cargo clippy` does not warn on incomplete manual `Debug` impls
+- A group with N members consistently shows only one member after a list/get round-trip
+- `serialize_group_vcard()` produces correct multi-line output but `parse_vcard()` returns `members.len() == 1`
+- Adding a second contact to a group that already has one member appears to succeed but the first member disappears on the next list
 
 **Phase to address:**
-Security hardening phase. This is a pure security fix with no wire behavior change; lower regression risk than timeout or 4xx changes.
+Group CRUD foundation phase — add a round-trip unit test for multi-member groups before any membership management commands are wired.
 
 ---
 
-### Pitfall 4: Confirmation Token Migration Breaks Existing MCP Hosts Mid-Milestone
+### Pitfall 4: urn:uuid: Prefix Confusion — Stored vs. Wire Format
 
 **What goes wrong:**
-Changing the `confirmation_token` function (finding #14) from a pure hash to a nonce-bound token changes the token format. Any MCP host (Claude Desktop, a script, an agent) that completed a PREVIEW step to obtain a token, then upgrades or reconnects to the new server version before submitting the CONFIRM step, will submit a token with the old format. The CONFIRM step will reject it with a cryptic "invalid token" error. The two-step PREVIEW/CONFIRM flow is stateful across two separate MCP tool calls, and the host has no way to know the token format changed.
+On the wire, `X-ADDRESSBOOKSERVER-MEMBER` values include the `urn:uuid:` prefix:
+```
+X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:d4c1baf6-...
+```
+
+The contact's own `UID` property does NOT include this prefix:
+```
+UID:d4c1baf6-...
+```
+
+This asymmetry means: when adding a contact to a group, you must store `urn:uuid:<contact.id>` in the group vCard, not `<contact.id>` bare. When looking up which contacts belong to a group, you must strip the `urn:uuid:` prefix before comparing against `contact.id`. If the prefix is stored as-is in `members: Vec<String>`, every membership lookup requires string manipulation at the call site. If the prefix is stripped on parse and not re-added on serialize, the group vCard written to Fastmail has invalid `MEMBER` lines.
 
 **Why it happens:**
-Stateless token validation (current design) looks safe in isolation but creates a migration window where old-format and new-format tokens coexist. Adding a per-session nonce means tokens issued by one server process are invalid on a restarted process — any agent mid-workflow during the MCP server restart will fail. The current implementation uses `DefaultHasher` (finding #27 in carddav, similar pattern in types.rs), which adds a second failure mode: hash values can change between Rust versions even without a code change.
+This is a vCard 3.0 extension quirk — the `urn:uuid:` prefix is a URN scheme required only in the `MEMBER` / `X-ADDRESSBOOKSERVER-MEMBER` property context. Developers familiar only with the UID property expect raw UUIDs everywhere. RFC 6350 (vCard 4) uses the same `urn:uuid:` scheme for `MEMBER`, so the asymmetry exists in both formats.
 
 **How to avoid:**
-If the token format changes, bump the token format version prefix (e.g., `v2:...`) and add a graceful rejection message: "Token format has changed. Re-run the preview step to obtain a new token." Avoid a per-session nonce unless the architecture stores issued tokens server-side — a stateless per-process nonce still breaks across restarts and provides minimal security benefit over a randomly salted hash with a stable algorithm. For the `DefaultHasher` replacement, switch to a stable algorithm like SipHash from the `siphasher` crate or a simple keyed HMAC using `hmac` + `sha2` with a process-local secret. Do not use `sha2` alone (no key = still forgeable by parameter enumeration).
+Establish a single convention at the boundary: strip `urn:uuid:` during parse, store bare UIDs in `members: Vec<String>`, and re-add the prefix during serialization. Document this convention with a comment in both the parse and serialize paths. Add constants:
+```rust
+const MEMBER_URN_PREFIX: &str = "urn:uuid:";
+```
+Use these to strip on parse and prepend on serialize. Add a unit test asserting that `parse` → `serialize` → `parse` produces identical bare UIDs.
 
 **Warning signs:**
-- Integration tests that store a PREVIEW-phase token in a variable and submit it in a separate CONFIRM call fail after the nonce fix
-- The MCP server is restarted between preview and confirm in a long-running agent session
-- `DefaultHasher` is present anywhere token values are computed — both `types.rs:728-733` and `carddav/mod.rs:781-786` need auditing
+- Membership lookups that compare `group.members.contains(&contact.id)` always return false for groups fetched from the server
+- A round-trip (fetch group, add member, write group) doubles the `urn:uuid:` prefix: `urn:uuid:urn:uuid:...`
+- Integration test against WireMock passes (test fixture uses bare UIDs) but live Fastmail test fails (server returns full URN format)
 
 **Phase to address:**
-Security hardening phase. Document the token format change in the phase notes and verify the wiremock-based integration tests cover the full PREVIEW→CONFIRM flow.
+Group CRUD foundation phase — this is a serialization invariant that must be established before membership management, not after.
 
 ---
 
-### Pitfall 5: Concurrent DAV Fetch Aggregates Errors Incorrectly, Masking Partial Failures
+### Pitfall 5: Membership Add/Remove Is a Full Group vCard Read-Modify-Write Under ETag Guard
 
 **What goes wrong:**
-Converting sequential `for calendar in calendars` loops to `join_all` / `JoinSet` (finding #4) changes error semantics. The current sequential code returns `Err` on the first failure and stops. With `join_all`, if one of five calendar fetches fails (e.g., a 503 from Fastmail on a specific calendar), the other four results are discarded and the entire `list_events()` returns an error. Users see "failed to list events" when in reality four out of five calendars returned successfully. With `JoinSet`, dropped set aborts all in-flight tasks, so a panic in one task cancels all others.
+CardDAV has no PATCH operation. Adding or removing a member from a group requires:
+1. GET (or use cached version) of the current group vCard — obtain current ETag
+2. Parse the current `X-ADDRESSBOOKSERVER-MEMBER` list
+3. Add or remove the target UID
+4. PUT the full rewritten group vCard with `If-Match: <etag>`
+
+If two CLI invocations (or two MCP tool calls) race to add members to the same group concurrently, the second PUT will receive a 412 Precondition Failed because the first PUT changed the group's ETag. The caller must GET the latest version and retry. Without retry logic, the second concurrent membership change is silently lost or returns an opaque 412 error to the user.
+
+This is more acute than for regular contact updates because AI agents composing multiple `add-member` calls back-to-back (e.g., "add Alice, Bob, and Carol to Work group") will naturally serialize or parallelize these and hit the race window.
 
 **Why it happens:**
-`futures::future::join_all` collects all `Result<T, E>` into a `Vec<Result<T, E>>` — callers must explicitly decide whether to return all errors, the first error, or ignore errors from individual sub-fetches. The natural idiom `join_all(futures).await.into_iter().collect::<Result<Vec<_>, _>>()?` silently applies "fail on first error" semantics, which is strictly worse than the sequential loop it replaced for partial-failure tolerance.
+The existing `update_contact()` returns a `ContactConflict` error on 412 and propagates it to the caller — there is no retry. For single contact updates this is acceptable (user re-runs the command). For membership management, callers expect `add_member_to_group(group_id, contact_id)` to be a logical atomic operation, not a manual read-modify-write they have to retry.
 
 **How to avoid:**
-Use the "partial success" pattern: `join_all` returning `Vec<Result<T, E>>`, then partition into successes and failures, log failures with `tracing::debug!`, and return only the successes. For `list_events()` and `search_contacts()`, a failure on one calendar/address-book should not abort the entire result — this is explicitly called out in finding #19 ("Add per-address-book error tolerance"). Add a connection semaphore (e.g., `tokio::sync::Semaphore` with limit 5) to avoid opening unbounded concurrent connections to Fastmail, which may trigger rate limiting or connection limits.
+Implement `add_member_to_group` and `remove_member_from_group` as retrying read-modify-write operations within `CardDavClient`:
+1. Fetch the current group by href (GET, not list)
+2. Mutate the members list
+3. PUT with `If-Match`
+4. On 412: back off briefly (50-100ms), repeat from step 1
+5. Give up after 3 attempts and return `ContactConflict`
+
+For the MCP `addGroupMember` / `removeGroupMember` mutations, document in the GraphQL schema that the operation is idempotent on success but may fail with a conflict error on concurrent modification. Do not expose the retry logic to callers — encapsulate it.
 
 **Warning signs:**
-- A user with a read-only shared calendar (that returns 403) suddenly gets "events list failed" instead of seeing their writable calendars
-- `cargo test` mocks all calendars as successful; only a live test with one bad calendar triggers the regression
-- `join_all` used without explicit error partitioning anywhere in the concurrent-fetch implementation
+- `contacts group add-member` returns a `ContactConflict` error when no other client is active — indicates the group's ETag was not fetched before the PUT
+- Agent sessions that add multiple members to the same group fail on the second member
+- WireMock integration test for concurrent adds receives two PUTs on the same resource without any GET between them
 
 **Phase to address:**
-Performance/concurrency phase. The error-aggregation behavior must be specified in the acceptance criteria, not left as an implementation detail.
+Group membership management phase — the retry pattern must be in place before membership commands are exposed in CLI and MCP.
 
 ---
 
-### Pitfall 6: Connection Pool Exhaustion When DAV Clients Are Reconstructed Per MCP Request
+### Pitfall 6: Group Deletion Does Not Cascade — Members Still Exist on Server, But Membership Is Orphaned Silently
 
 **What goes wrong:**
-Each `CardDavClient::new()` / `CalDavClient::new()` call creates a new `reqwest::Client` with a fresh connection pool (finding #6). When the MCP server is used by an AI agent running 10-20 tool calls in quick succession, this creates 10-20 separate TLS sessions to Fastmail's servers. Since reqwest's `Client` is designed to be reused (its pool is internal to the instance), each abandoned `Client` drops its connections on `Drop`, but the TLS teardown still consumes server resources. Under sustained load, Fastmail's server may start returning 429 rate-limit or connection refused responses.
+In the vCard-type group model (which Fastmail uses), group membership is encoded only in the group's vCard via `X-ADDRESSBOOKSERVER-MEMBER`. The member contact vCards themselves have no back-reference to the group. When a group is deleted (DELETE on the group's href), the member contacts are unaffected — they remain on the server as normal contacts.
+
+This is correct and expected behavior. The pitfall is different: if the group vCard is deleted but the `Contact` struct in the application's data model (or a GraphQL resolver) caches group membership, stale membership data will be served until the cache is invalidated. In the MCP context, a tool call sequence of `deleteGroup(id)` → `listContacts()` that reads from a local cache will still show contacts as group members.
+
+The secondary pitfall: a `deleteGroup` command that does NOT first warn the user how many contacts are currently in the group provides a worse UX than `deleteCalendar` (which already has a `--confirm` flag). Silent deletion of a group with 50 members is surprising.
 
 **Why it happens:**
-The `JmapClient` is correctly wrapped in `Arc<Mutex<>>` and stored in the GraphQL schema's context data (see `graphql/mod.rs:22-30`). But `CardDavClient` and `CalDavClient` are instantiated inside each resolver function (`query.rs:199-214`), outside the context. The pattern exists for JMAP but was not replicated for DAV clients when they were added in v1.0/v1.1.
+The existing `delete_contact()` is a direct DELETE with ETag — no cascade check, no membership scan. The same pattern applied naively to `delete_group()` is technically correct at the protocol level but surprising at the UX level. There is no CardDAV server-side cascade; the server never modifies member vCards on group deletion.
 
 **How to avoid:**
-Add `carddav_client: Option<Arc<Mutex<CardDavClient>>>` and `caldav_client: Option<Arc<Mutex<CalDavClient>>>` to `JmapContext` in `graphql/mod.rs`. Initialize them in `FastmailMcp::new()` alongside the JMAP client. At minimum, extract the underlying `reqwest::Client` from CardDAV/CalDAV constructors into a single shared instance — this ensures all three DAV protocols reuse the same connection pool. Do not wrap the lock around individual HTTP calls; hold the lock only for the mutation of cached state (ETags, addressbook list), not for the duration of network I/O.
+Before deleting a group, fetch its member count. If > 0, require an explicit confirmation flag (`--confirm` or `--yes`, consistent with existing delete commands). In the GraphQL mutation, surface member count in the mutation's return type so MCP callers can show it to users. Do NOT attempt to "clean up" member vCards by removing their back-references — there are no back-references in the vCard-type model. Cache invalidation: the `CardDavClient` holds no per-group cache, so no invalidation is needed unless a caching layer is added.
 
 **Warning signs:**
-- `cargo clippy` will not catch this — it is an architectural problem, not a lint
-- Integration tests with wiremock pass (each test creates its own clients) but live AI-agent sessions stall
-- `RUST_LOG=debug` trace output shows "new TLS handshake" on every MCP tool call
+- `contacts group delete <id>` succeeds silently with no mention of 30 members that were in the group
+- After group deletion, `contacts list` shows members that the user expected to be "in the group" are still present (this is correct but confusing if users expect cascade delete)
+- An MCP agent calls `deleteGroup` without checking member count and then reports to the user that "50 contacts have been deleted" — they have not been
 
 **Phase to address:**
-Performance/DAV client reuse phase. Pair with finding #6. If the Mutex-across-await concern (finding #26) is addressed in the same phase, restructure both together to avoid introducing a new Mutex-held-across-await regression while fixing client reuse.
+Group CRUD foundation phase — the delete command confirmation pattern must match the existing `contacts delete --confirm` convention from the start.
 
 ---
 
-### Pitfall 7: tokio::Mutex Held Across Async I/O Serializes All MCP Requests
+### Pitfall 7: list_contacts() Returns Groups and Contacts Intermixed — Filtering Requires KIND Parsing
 
 **What goes wrong:**
-Finding #26 documents that the JMAP client mutex is held across async I/O, serializing all MCP requests. If the DAV client reuse fix (finding #6) naively copies the `Arc<Mutex<JmapClient>>` pattern to `Arc<Mutex<CardDavClient>>` and `Arc<Mutex<CalDavClient>>`, the serialization problem is replicated for three clients instead of one. A `contacts list` call that fetches all address books will block `events list` for the duration of all REPORT requests.
+Fastmail stores group vCards in the same address book as regular contact vCards. A `list_contacts()` REPORT returns both. The current `parse_contacts_from_xml()` does not check `X-ADDRESSBOOKSERVER-KIND`, so all vCards — including groups — are deserialized as `Contact` structs with empty `emails` and `phones` vecs. The `contacts list` command will show group vCards as contacts with just a name and no email, which is confusing.
+
+A `contacts group list` command built on top of `list_contacts()` requires post-filtering by `kind == Group`. If `kind` is not modeled in the `Contact` struct, this filtering is impossible without re-fetching individual vCards.
+
+The CardDAV `addressbook-query` REPORT supports a `<card:prop-filter>` element that can filter by property presence, but Fastmail's Cyrus IMAP-based server is known to have incomplete property filter support. Relying on server-side kind filtering may not work and is not tested.
 
 **Why it happens:**
-`tokio::sync::Mutex` is correct for protecting shared mutable state, but the lock scope in the current resolvers (`client.lock().await` at the top of `async fn emails(...)`) holds the lock for the entire resolver body, including all `await` points within it. This is the documented anti-pattern from the Tokio team: the async mutex should guard only the state mutation, not the I/O operation.
+When groups were out of scope, ignoring `X-ADDRESSBOOKSERVER-KIND` was safe. With groups in scope, the address book is a mixed collection of two distinct resource types that the data model must differentiate.
 
 **How to avoid:**
-Refactor the client lock pattern: extract needed config (username, password, base URL) under the lock, clone them (cheap), drop the lock, then execute the HTTP operation without holding the lock. For CalDAV/CardDAV, the clients are largely stateless HTTP wrappers — their constructors only need config, not mutable state. Consider restructuring `CardDavClient` and `CalDavClient` to hold an immutable config struct and a shared `reqwest::Client` rather than holding mutable state that requires a mutex at all.
+Add `kind: ContactKind` to the `Contact` struct with `#[serde(default)]` so existing JSON serialization does not break. Default to `ContactKind::Individual`. Parse `X-ADDRESSBOOKSERVER-KIND:group` in `parse_vcard()` and set `kind = ContactKind::Group`. Filter in `list_contacts()` callers or add explicit `list_groups()` / `list_individual_contacts()` methods that call `list_contacts()` and filter by kind. Do not rely on server-side REPORT filters for kind — use client-side filtering.
 
 **Warning signs:**
-- Two concurrent MCP tool calls (e.g., an agent querying emails and events at the same time) run sequentially instead of in parallel — observable with `RUST_LOG=debug` timing
-- `tokio::sync::Mutex::lock()` future is pending for the duration of a REPORT query (seconds), visible in a tokio-console trace
-- Resolvers that lock the client at the top of their body and do not release it until the last `await` point
+- `contacts list` shows entries with no email and no phone — these are group vCards leaking into the contact list
+- `contacts group list` returns an empty list (groups not parsed) or the full contact list including individuals (no kind filtering)
+- `contacts create alice@example.com` creates a contact that appears alongside group entries in list output
 
 **Phase to address:**
-Performance/stability phase. Must be addressed when implementing client reuse (finding #6) to avoid introducing the new serialization problem while fixing pool exhaustion.
+Group CRUD foundation phase — the data model must distinguish kinds before any command is implemented.
 
 ---
 
@@ -159,12 +217,11 @@ Performance/stability phase. Must be addressed when implementing client reuse (f
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| `DefaultHasher` for fallback contact ID generation | No extra dependency | Hash changes across Rust versions → stored IDs become invalid in future binary update | Never for IDs that may be stored or compared across binary versions |
-| `process::exit(1)` instead of `Output::error().print()` | Simple, familiar | Breaks structured JSON contract — MCP hosts and scripts get nothing on stdout | Never in this codebase — the JSON output contract is the public API |
-| Recreating `reqwest::Client` per request | Simple, no shared state | TLS session overhead, connection exhaustion under load, pool disabled | Only acceptable in CLI commands that run once per process lifetime |
-| Holding `tokio::sync::Mutex` across all await points | Simple single-lock pattern | Serializes all concurrent MCP requests; high lock contention | Acceptable only in MVP when concurrency is not yet a requirement — v1.1 has shipped, this is now tech debt |
-| Stringly-typed IDs (`String` everywhere) | No registration boilerplate | Cross-type ID confusion, no compile-time guarantee that an email_id is not passed where a mailbox_id is expected | Acceptable for prototype; not for a hardened API surface |
-| `kreuzberg` always compiled in | No feature-flag complexity | 10-20MB PDFium bloat in every binary, even for users who never use `download --format json` | Acceptable during initial development; not for distribution |
+| Reuse `Contact` struct for groups (no `kind` field) | No data model change | `list_contacts()` returns intermixed groups and contacts; callers cannot filter; membership info is inaccessible | Never for v1.3 — groups need a distinguishable type |
+| Store `urn:uuid:` prefix in `members: Vec<String>` | Skip prefix stripping logic | Every membership lookup must strip prefix; easy to double-prefix on a round-trip | Never — establish the bare-UID convention at the boundary |
+| Skip ETag guard on group membership writes | Simpler implementation | Lost updates when multiple agents modify the same group; 412 errors surfaced to callers unexpectedly | Never — the existing ETag discipline must extend to groups |
+| Re-fetch group on every member add/remove (no cache) | Always fresh | Acceptable for MVP; two round-trips per membership change | Acceptable in v1.3 MVP; optimize with a stale-while-revalidate cache in v1.4 if needed |
+| Use `contacts delete` pattern for group delete (no member count warning) | Consistent CLI behavior | Users silently delete large groups without understanding what membership is being discarded | Never — group delete needs member count disclosure |
 
 ---
 
@@ -172,12 +229,12 @@ Performance/stability phase. Must be addressed when implementing client reuse (f
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| Fastmail CardDAV `PUT` with `If-None-Match` | Sending `If-None-Match: *` to create-or-fail returns 412 always from Fastmail (known Cyrus IMAP behavior) | Use `If-None-Match: *` only when no ETag exists; for updates always use the stored ETag in `If-Match` |
-| Fastmail CalDAV REPORT range | Omitting `<C:time-range>` from the REPORT body fetches the entire event history — unbounded response | Always include a time range in the REPORT body; the default "future events from today" path already does this |
-| CardDAV `DELETE` with stale ETag | Fastmail returns 412 with no new ETag in the response on delete-with-stale-ETag (unlike PUT) | The existing "retry delete without If-Match on 412" decision (PROJECT.md) is correct; do not remove this workaround during hardening |
-| JMAP 400 Bad Request | Previously fell through to JSON deserialization error, hiding the actual server message | After adding the 4xx catch-all, verify 400 responses include the Fastmail error body in the Error::Server message for debugging |
-| MCP stdio transport and stdout pollution | Any `println!()` or `print!()` in the MCP server path corrupts the JSON-RPC stream; only stderr logging is safe | Use `tracing` with stderr output; never add debug `println!()` inside `src/mcp/` |
-| Fastmail 429 Rate Limiting | Rate-limited responses from concurrent DAV fetches are currently not retried | Add a brief exponential-backoff retry (1-2 attempts) specifically for 429 responses in the DAV clients; do not apply globally |
+| Fastmail CardDAV group format | Writing `KIND:group` on a `VERSION:3.0` vCard | Use `X-ADDRESSBOOKSERVER-KIND:group` and `X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:<uid>` on 3.0 vCards |
+| Fastmail stores but does not display X- extensions | Assuming stored data is visible in the Fastmail web UI | Test group creation by round-tripping via CardDAV (REPORT), not by checking the Fastmail web contact list |
+| Group vCard href and ETag | Using `list_contacts()` cached result for a group PUT | Fetch the group's current ETag immediately before every write (GET or targeted REPORT) to avoid stale ETag 412 |
+| REPORT returns groups in contact list | Assuming `list_contacts()` returns only contacts | Always filter by `kind` after parsing; do not assume an empty `emails` list means "not a group" |
+| Fastmail 412 on group writes | Treating 412 as a fatal error in membership operations | Implement GET-then-PUT retry with backoff; expose `ContactConflict` only after exhausting retries |
+| vCard property filter in REPORT | Using `<card:prop-filter name="X-ADDRESSBOOKSERVER-KIND">` to fetch only groups | Fastmail's Cyrus IMAP server may not support property filters — do client-side kind filtering instead |
 
 ---
 
@@ -185,11 +242,9 @@ Performance/stability phase. Must be addressed when implementing client reuse (f
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| `join_all` without concurrency limit on DAV fetch | Fastmail returns 429; TLS handshake storm | Use `tokio::sync::Semaphore` to cap concurrent connections to 5 | Once a user has more than ~5 calendars/address books |
-| `serde_json::from_value(data.clone())` (finding #13) | High memory usage on email list queries with large bodies | Accept owned `Value` in `parse_response`, avoid deep-clone | At ~50 emails with 10KB bodies each, ~500KB wasted per request |
-| `resp.bytes().await?.to_vec()` (finding #12) | Double memory allocation for large attachments | Return `bytes::Bytes` directly | For attachments > 1MB |
-| `get_event_by_id` fetches all events from all calendars (finding #5) | Multi-second lookup for a single event; times out on large calendars | Use targeted CalDAV REPORT with UID filter | Users with > ~100 events across multiple calendars |
-| Lanczos3 resize filter for MCP images (finding #22) | Noticeably slow image processing in MCP context responses | Switch to `Triangle` or `CatmullRom` — visually indistinguishable at thumbnail sizes | Every image attachment processed through the MCP path |
+| Re-fetching all contacts to find group members | `contacts group get` takes >1s for address books with >200 contacts | Cache the address book listing per `CardDavClient` instance; for targeted lookups use GET by href directly | Users with large Fastmail contact books (>200 contacts) |
+| Re-fetching entire address book on every membership add | Each `add_member` does a full `list_contacts()` just to get the group's current vCard | Store the group's `href` + `etag` from the create/last-update response; use GET-by-href (single resource) for membership updates | Every `add_member` call — the full list is never needed |
+| Concurrent membership adds trigger repeated 412 retry loops | Two agents adding to the same group simultaneously both retry indefinitely | Cap retries at 3; add jitter to backoff; surface conflict error to callers after 3 attempts | If an AI agent fires N parallel `add_member` calls — unlikely but possible |
 
 ---
 
@@ -197,13 +252,9 @@ Performance/stability phase. Must be addressed when implementing client reuse (f
 
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| vCard EMAIL/TEL values not escaped for `\r\n` (finding #8) | Attacker-controlled contact data injects arbitrary vCard properties that Fastmail stores and serves to other clients | Validate and strip `\r`, `\n`, `;`, `:` from parameter values; apply `escape_value()` consistently to ALL fields including email address and phone number |
-| iCalendar attendee role/partstat not validated (finding #9) | Injection of arbitrary iCal properties through `role` or `partstat` fields in create/update event API; Fastmail stores and distributes the corrupted iCal | Enforce allowlists for enum-like fields; escape freeform string fields |
-| Auth token as positional CLI argument (finding #10) | Token visible in `ps aux`, shell history, `/proc/self/cmdline` on any multi-user system | Accept token via stdin (`--token -`), env var (already supported), or interactive prompt with `rpassword` crate |
-| Deterministic confirmation token without nonce (finding #14) | Any caller who knows the mutation parameters can compute the token and skip the PREVIEW step entirely | Add a per-process random nonce (generated once at startup, not per-call) mixed into the hash; document that tokens are process-scoped |
-| `Debug` on `Config` structs (finding #15) | `api_token` and `app_password` appear in plaintext in tracing output, CI logs, crash dumps | Custom `Debug` impl that redacts sensitive fields; never use `derive(Debug)` on types that hold credentials |
-| Blob download URL template not URL-encoded (finding #30) | A filename or account ID containing `&`, `+`, or `%` in the JMAP download URL template produces a malformed URL | Use `percent-encoding` crate or `urlencoding` for template substitution in `src/jmap/mod.rs:858-863` |
-| No GraphQL depth/complexity limits (finding #24) | A deeply nested GraphQL query (e.g., email → attachments → content recursively) can exhaust server memory or trigger unbounded JMAP requests | Set `max_depth` and `max_complexity` on the `async_graphql::Schema` builder |
+| Group name not escaped in vCard serialization | Group name containing `\r\n` or `;` injects arbitrary vCard properties into the group vCard stored on Fastmail | Apply `escape_value()` to the group `FN` and `N` fields exactly as done for contact names in the existing `serialize_vcard()` |
+| Member UID not validated before inserting into group vCard | Attacker-supplied UID containing `\r\n` breaks the vCard line structure | Validate that each member UID matches UUID format before including in `X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:<uid>`; the UID field on contact create is a UUID v4 — enforce the same constraint on group membership inputs |
+| Group delete without ETag | Without `If-Match` on DELETE, two concurrent agents can both believe they succeeded on the same group | Apply the same ETag-guarded DELETE pattern used by `delete_contact()` — pass the group's current ETag in `If-Match` |
 
 ---
 
@@ -211,25 +262,24 @@ Performance/stability phase. Must be addressed when implementing client reuse (f
 
 | Pitfall | User Impact | Better Approach |
 |---------|-------------|-----------------|
-| `Output::error()` contract broken by `process::exit(1)` (finding #11) | MCP hosts and scripts parsing stdout JSON receive empty output on confirmation-guard failures; agents cannot distinguish "no confirmation given" from a crash | Replace all `eprintln!() + process::exit(1)` with `Output::<()>::error("...").print()` and normal return; let main() exit with status 1 |
-| Auth token visible in shell history | Users who run `fastmail-cli auth <token>` have the token in `~/.zsh_history` and `~/.bash_history` permanently | Add `--token-stdin` flag or interactive prompt mode; update the auth command documentation |
-| Config corruption error message lacks recovery guidance (finding #33) | Users see "Failed to parse config" with no next step; they may delete the config file unnecessarily | Include the config file path in the error and suggest `fastmail-cli auth` to reinitialize |
-| `download` command crashes (panics) rather than erroring on attachment-less emails (finding #18) | The process terminates without a JSON error; scripts receive non-zero exit with no stdout | Replace three `unwrap()` calls with `let Some(...) else { Output::error("...").print(); return Ok(()); }` |
+| `contacts group delete` with no member count disclosure | User unknowingly destroys a group with 50 members, assuming "delete group" also deletes contacts | Show member count before deletion: "Deleting group 'Work' (3 members). Pass --confirm to proceed." |
+| `--group` flag on `contacts create` fails silently if group does not exist | Contact is created without group membership; user sees no error | Validate the group ID before creating the contact; return an error if the group is not found |
+| Group list output mixes raw UIDs for members | Members appear as opaque UUIDs rather than names | Resolve member UIDs to contact names in `group get` output; include both UID and name in JSON response |
+| Membership add does not return updated member list | User runs `add-member` and must separately run `group get` to confirm | Return the full updated group (including resolved member names) from `add_member` and `remove_member` operations |
 
 ---
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **4xx handling:** Adding the catch-all match arm does not break existing callers — verify all `src/commands/` error match arms still compile and correctly map `Error::Server` to user-facing messages
-- [ ] **Timeout fix:** Both `src/carddav/mod.rs` and `src/caldav/mod.rs` clients have the timeout set — check both constructors, not just one
-- [ ] **vCard injection fix:** `escape_value()` applied to EMAIL address value AND EMAIL type parameter AND TEL number AND TEL type parameter — all four, not just the label
-- [ ] **process::exit replacement:** All five call sites in `src/main.rs` replaced, not just the most obvious one — confirm by grepping for `process::exit` in main.rs after the fix
-- [ ] **Concurrent fetch:** Error partitioning logic correctly handles the partial-failure case — the "some calendars failed" path returns partial results, not Err
-- [ ] **DAV client reuse:** The new shared client in GraphQL context is initialized before the first query, not lazily on first use (lazy init requires a Mutex acquisition that could race)
-- [ ] **Debug redaction:** New fields added to `Config` structs in the future do not silently appear unredacted — add a note in the struct definition or a compile-time reminder
-- [ ] **kreuzberg feature flag:** The `download` CLI command with `--format json` still works when the feature is enabled; the default binary without the feature gives a clear error message explaining it needs to be compiled with `--features document-extraction`
-- [ ] **Newtype IDs in GraphQL:** Each newtype that appears in the GraphQL schema has been registered with `scalar!()` or `#[derive(NewType)]` — missing registration causes a schema build panic, not a compile error
-- [ ] **Signal handling:** `tokio::signal::ctrl_c()` is wired into the MCP server `select!` loop — verify with a `kill -INT` test, not just a normal exit
+- [ ] **Group vCard format:** Verify Fastmail web UI shows the created group as a group (not a nameless contact) — the `X-ADDRESSBOOKSERVER-KIND:group` line must be present and recognized
+- [ ] **Multi-member round-trip:** Create a group with 3 members, fetch it back, assert all 3 UIDs are returned — confirms no last-value-wins overwrite
+- [ ] **urn:uuid prefix consistency:** serialize → parse → serialize produces identical `X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:...` lines with no doubled prefix
+- [ ] **Contacts list excludes groups:** `contacts list` does not show group vCards in its output after group creation
+- [ ] **Group list excludes contacts:** `contacts group list` shows only group vCards, not individual contacts
+- [ ] **ETag guard on membership writes:** A `add-member` PUT is always preceded by a GET/REPORT of the current group ETag — never uses a stale ETag from a prior `list_contacts()` call
+- [ ] **Group delete with --confirm:** Deleting a group with >0 members requires `--confirm`; without it, the command exits with a non-zero status and a clear message
+- [ ] **--group flag on contacts create:** Assigning a non-existent group returns an actionable error, not a silent no-op
+- [ ] **MCP mutations return updated state:** `addGroupMember` and `removeGroupMember` return the updated group object, not just a success boolean
 
 ---
 
@@ -237,13 +287,11 @@ Performance/stability phase. Must be addressed when implementing client reuse (f
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Timeout regression breaks users with large calendars | MEDIUM | Roll back DAV timeout value; add a `--timeout` CLI flag as a short-term escape hatch while the right value is determined from user data |
-| Confirmation token format change breaks mid-workflow agents | LOW | Version-prefix the token format (`v2:...`), add graceful "re-run preview" error message; no data migration needed since tokens are ephemeral |
-| `join_all` partial-failure drops valid results in prod | MEDIUM | Revert to sequential fetch (safe fallback) until partial-success aggregation is implemented and tested |
-| Connection pool exhaustion under AI-agent load | LOW | DAV clients are cheap to reconstruct; the immediate fix is to add the shared `reqwest::Client` without full context sharing; full client reuse can follow |
-| Secret leaked in log (Debug impl regression) | HIGH | Immediately rotate the leaked credential; audit log aggregation systems for past occurrences; the code fix is one impl block change |
-| kreuzberg feature flag breaks default download path | LOW | Re-add kreuzberg to default features; the feature flag is additive and can be backed out without breaking any existing users |
-| Newtype ID GraphQL scalar registration missing | LOW | Caught at schema build time (panic), not at runtime; fix is adding `scalar!(NewTypeId)` and rebuilding |
+| Wrong group format (KIND instead of X-ADDRESSBOOKSERVER-KIND) | MEDIUM | Delete incorrectly formatted group vCards; re-create using the correct Apple-extension format; no contact data is lost |
+| Multi-member parse collapsing to one | HIGH | All groups with >1 member have corrupted membership data on the server after any write; must re-add all members; add a migration tool that fetches all group hrefs, re-parses with the fixed parser, and reports discrepancies before writing |
+| urn:uuid prefix doubled on round-trip | MEDIUM | Groups written with doubled prefix are unrecognized by Apple clients; re-write all group vCards after fixing the serializer; testable by fetching raw vCard from Fastmail via REPORT |
+| Stale ETag on membership write | LOW | Already handled by `ContactConflict` error; user re-runs the command; no data loss since 412 means the write was rejected |
+| Group deleted without confirmation | HIGH | Group vCard is gone; member contacts still exist; group must be re-created and members re-added; no automatic recovery |
 
 ---
 
@@ -251,40 +299,30 @@ Performance/stability phase. Must be addressed when implementing client reuse (f
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| Timeout regression (live calendar hang) | Phase: DAV stability (timeout + 4xx fixes) | Smoke test against live Fastmail account with > 50 events after fix; confirm 30s is sufficient |
-| 4xx catch-all breaks existing error variant callers | Phase: DAV stability | Run full test suite; add wiremock tests for 400, 403, 410 responses |
-| Debug secret redaction over-scoping | Phase: Security hardening | Inspect `Debug` output in tests; grep for `api_token` and `app_password` in test log output |
-| Confirmation token migration | Phase: Security hardening | Integration test covers PREVIEW→restart→CONFIRM flow; document token format version |
-| Concurrent fetch error aggregation | Phase: Performance + concurrency | Unit test with mock that returns error for one of three calendars; verify partial results returned |
-| Connection pool exhaustion | Phase: Performance + DAV client reuse | Load test: 10 sequential MCP tool calls; observe TLS handshake count in debug log |
-| Mutex held across I/O serializes MCP | Phase: Performance + DAV client reuse | Concurrent integration test: two MCP tool calls in parallel; measure wall clock time vs. sequential |
-| process::exit breaks JSON contract | Phase: DAV stability (Output contract fix) | Test: invoke `spam` and `delete` confirmation-guard path; verify stdout JSON is valid |
-| vCard/iCal injection | Phase: Security hardening | Fuzzing or property-based tests for escape functions; test with `\r\n` in email address field |
-| kreuzberg optional feature flag | Phase: Performance (binary size + feature flags) | `cargo build --no-default-features` succeeds and produces a working binary; `--features document-extraction` build also passes |
-| Newtype IDs in serde/GraphQL | Phase: Code quality (newtyping) | Schema introspection query returns without panic; serde round-trip tests for each newtype |
-| Signal handling in rmcp | Phase: Stability (MCP signal handling) | `kill -TERM <pid>` against running MCP server; verify clean exit and no zombie process |
-| DefaultHasher instability for contact IDs | Phase: Code quality | Replace with `siphasher::SipHasher13`; verify existing unit tests for contact ID generation still pass |
+| Wrong vCard group format (KIND vs. X-ADDRESSBOOKSERVER-KIND) | Phase 1: Group data model + CRUD foundation | Live Fastmail write: create a group, verify it appears as a group in Fastmail web UI and via DAVx5 sync |
+| parse_vcard silently discards group vCards | Phase 1: Group data model + CRUD foundation | Unit test: parse group vCard with empty FN; unit test: kind field populated for group vCards |
+| Multi-member X-ADDRESSBOOKSERVER-MEMBER collapsed to one | Phase 1: Group data model + CRUD foundation | Unit test: round-trip vCard with 3 members; assert members.len() == 3 |
+| urn:uuid prefix confusion | Phase 1: Group data model + CRUD foundation | Unit test: serialize → parse → serialize produces identical MEMBER lines |
+| Membership add/remove race condition (read-modify-write) | Phase 2: Group membership management | WireMock integration test: two concurrent add-member calls; verify final group has both members |
+| Group deletion without member count warning | Phase 1: Group CRUD (delete command) | CLI test: `contacts group delete <id>` with non-empty group exits non-zero without --confirm |
+| list_contacts() returns groups and contacts intermixed | Phase 1: Group data model + CRUD foundation | Integration test: create one group + one contact; assert `contacts list` returns only the contact; `contacts group list` returns only the group |
 
 ---
 
 ## Sources
 
-- CODEBASE-REVIEW.md (root of fastmail-cli repo) — 33 findings, P1/P2/P3 tiers
-- Fastmail CalDAV known 412 quirk: https://sourceforge.net/p/outlookcaldavsynchronizer/tickets/1607/
-- Fastmail DAVx5 interop notes: https://www.davx5.com/tested-with/fastmail
-- Fastmail CalDAV blog (scheduling side effects): https://www.fastmail.com/blog/announcing-caldav-scheduling-support-for-clients/
-- tokio Mutex anti-pattern (held across await): https://tokio.rs/tokio/tutorial/shared-state
-- tokio deadlock with Mutex: https://turso.tech/blog/how-to-deadlock-tokio-application-in-rust-with-just-a-single-mutex
-- reqwest connection pool best practices: https://docs.rs/reqwest/latest/reqwest/struct.Client.html
-- DefaultHasher instability across Rust versions: https://internals.rust-lang.org/t/stability-of-hash-values/2241
-- async-graphql NewType and scalar registration: https://async-graphql.github.io/async-graphql/en/custom_scalars.html
-- wiremock Rust (port conflicts, random allocation): https://github.com/LukeMathWalker/wiremock-rs
-- secrecy crate for secret redaction: https://docs.rs/secrecy/latest/secrecy/
-- rmcp (official Rust MCP SDK): https://github.com/modelcontextprotocol/rust-sdk
-- MCP stdio transport and stdout corruption: https://www.shuttle.dev/blog/2025/07/18/how-to-build-a-stdio-mcp-server-in-rust
-- Tokio task cancellation patterns: https://cybernetist.com/2024/04/19/rust-tokio-task-cancellation-patterns/
-- Cargo optional features (breaking defaults): https://doc.rust-lang.org/cargo/reference/features.html
+- DAVx5 Fastmail compatibility page (confirms "Groups are separate vCards" for Fastmail): https://www.davx5.com/tested-with/fastmail
+- rcmcarddav GROUPS.md (comprehensive vCard group type comparison, X-ADDRESSBOOKSERVER vs CATEGORIES vs KIND): https://github.com/mstilkerich/rcmcarddav/blob/master/doc/GROUPS.md
+- Nextcloud issue #9369 (X-ADDRESSBOOKSERVER-MEMBER overwrite bug in production code): https://github.com/nextcloud/server/issues/9369
+- DAVx5 FAQ on group management: https://www.davx5.com/faq/cant-manage-groups-on-device
+- DAVx5 technical documentation (KIND vs X-ADDRESSBOOKSERVER-KIND fallback): https://manual.davx5.com/technical_information.html
+- RFC 6352 §6.3.2 (lost update prevention with If-Match on CardDAV PUT): https://www.rfc-editor.org/rfc/rfc6352
+- RFC 6350 (vCard 4 KIND:group and MEMBER:urn:uuid format): https://www.rfc-editor.org/rfc/rfc6350.html
+- rcmcarddav issue #331 (vCard 4 KIND/MEMBER not recognized by vCard 3-only parsers): https://github.com/mstilkerich/rcmcarddav/issues/331
+- Nicolas Grilly migration post (Fastmail uses groups, not CATEGORIES): https://www.grilly.com/posts/migrate-google-contacts-labels-to-fastmail-groups/
+- Fastmail contact groups help article: https://www.fastmail.help/hc/en-us/articles/360058753114-Contact-groups
+- Existing codebase: src/carddav/mod.rs (parse_vcard, serialize_vcard, parse_contacts_from_xml)
 
 ---
-*Pitfalls research for: fastmail-cli v1.2 Hardening & Quality*
-*Researched: 2026-04-04*
+*Pitfalls research for: fastmail-cli v1.3 Contact Groups*
+*Researched: 2026-04-13*

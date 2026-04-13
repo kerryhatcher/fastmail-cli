@@ -1,111 +1,153 @@
 # Stack Research
 
-**Domain:** Rust CLI/MCP hardening — integration tests, secret redaction, security limits, concurrency, URL encoding
-**Researched:** 2026-04-04
-**Confidence:** HIGH (all version claims verified against docs.rs / official docs)
+**Domain:** Rust CLI/MCP — CardDAV contact group CRUD via vCard 3.0 X-ADDRESSBOOKSERVER extensions
+**Researched:** 2026-04-13
+**Confidence:** HIGH (protocol claims verified against RFC 6350, rcmcarddav GROUPS.md, and Fastmail behavior reports; no new Cargo dependencies required)
 
 ---
 
-## Context: This is a Hardening Milestone
+## Context: This is an Extension Milestone, Not a New Stack
 
-The existing production stack (tokio 1.49, reqwest 0.13.1, async-graphql 7, rmcp 0.12, clap 4.5, serde 1.0, thiserror 2.0, roxmltree 0.21, chrono 0.4, uuid 1) is **validated and must not change**. This document covers only the **additions** needed for v1.2 Hardening & Quality.
+The entire production stack (tokio 1.49, reqwest 0.13.1, roxmltree 0.21.1, uuid 1, async-graphql 7, clap 4.5, serde 1.0, thiserror 2.0, wiremock 0.6 dev dep) is **validated, compiling, and passing 181 tests**. **No new Cargo.toml entries are required** for v1.3. All capability needed for contact groups already ships in the existing dependency set.
+
+---
+
+## Protocol Decision: Which vCard Group Format?
+
+Fastmail uses **vCard 3.0 with Apple X-ADDRESSBOOKSERVER extensions** — not standard vCard 4.0 KIND/MEMBER.
+
+### Why X-ADDRESSBOOKSERVER, not KIND:group
+
+- Fastmail serializes all contact data as vCard 3.0 (confirmed: Fastmail docs, DAVx5 tested-with page)
+- vCard 4.0 `KIND:group` + `MEMBER:urn:uuid:…` only applies when the server and all round-trip clients support vCard 4.0
+- Fastmail's CardDAV server speaks vCard 3.0; the existing `serialize_vcard()` outputs `VERSION:3.0`
+- The Apple extensions (`X-ADDRESSBOOKSERVER-KIND`, `X-ADDRESSBOOKSERVER-MEMBER`) are the de-facto standard for vCard 3.0 group representation — used by Apple macOS/iOS, iCloud, and Fastmail
+- rcmcarddav (reference CardDAV implementation) documents: "vCard v4 specifies precisely this approach as the way to implement contact groups, except for using different property names" — meaning X-ADDRESSBOOKSERVER-KIND maps 1:1 to KIND, and X-ADDRESSBOOKSERVER-MEMBER maps 1:1 to MEMBER
+
+### Group vCard Wire Format (confirmed)
+
+```
+BEGIN:VCARD
+VERSION:3.0
+UID:696cb4ce-792b-4b7b-833d-29727a33e9c9
+FN:My Group Name
+N:My Group Name;;;;
+X-ADDRESSBOOKSERVER-KIND:group
+X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:613f2ccc-600a-47ee-84cb-9b30717c9f13
+X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:8ef07e3b-9dc1-4fef-862a-ee27af4296be
+END:VCARD
+```
+
+Key points:
+- `X-ADDRESSBOOKSERVER-KIND:group` is a single property identifying this vCard as a group, not a contact
+- `X-ADDRESSBOOKSERVER-MEMBER` is **repeated** — one line per member — using `urn:uuid:<contact-uid>` URN format
+- The contact UID in the URN matches the `UID` property of the member contact's vCard
+- FN is required (group display name); N is present but semantically empty for groups
+- Each group is a **separate `.vcf` resource** PUT into the same address book collection as individual contacts — no special collection or WebDAV path needed
 
 ---
 
 ## New Stack Additions
 
-### Dev Dependencies (Test Infrastructure)
+**None.** Every capability needed is already available in the existing dependency set.
 
-| Library | Version | Purpose | Why Recommended |
-|---------|---------|---------|-----------------|
-| `wiremock` | 0.6.5 | Async HTTP mock server for integration tests | Authoritative choice for tokio-based HTTP mocking in Rust. Starts a real local TCP server; no trait injection required. Works with reqwest unchanged. Supports any HTTP method string including WebDAV `PROPFIND`, `REPORT`, `MKCALENDAR`. Isolation per test via random port assignment. Mock expectations auto-verified on drop. Last release: 2025-08-24. Maintained by Luca Palmieri (zero2prod). |
+### Existing Capabilities That Cover Groups
 
-**Why not mockito?** mockito 1.x is single-threaded and global-state based. It cannot run tests in parallel cleanly. wiremock is parallel-safe by design.
-
-**Why not trait-based mocking (mockall)?** Requires introducing an abstraction layer (trait over `reqwest::Client`) through the entire call chain. wiremock requires zero refactoring of production code — the existing `reqwest::Client` just hits the mock server URL.
-
-### Production Dependencies (New)
-
-| Library | Version | Purpose | Why Recommended |
-|---------|---------|---------|-----------------|
-| `secrecy` | 0.10.3 | `Secret<T>` wrapper for API tokens and app passwords | Fixes finding #15 (Debug derive on Config exposes plaintext secrets). `SecretString` alias wraps `String`; `Debug` outputs `[REDACTED]` automatically. Memory is zeroed on drop via `zeroize`. `expose_secret()` makes access explicit and grep-auditable. No unsafe code (`forbid(unsafe_code)`). Last release: 2024-10-09. |
-| `percent-encoding` | 2.3.2 | RFC 3986 percent-encoding for URL path/query components | Fixes finding #30 (blob download URL template values not URL-encoded). Already a transitive dep via reqwest/url; adding directly is zero binary-size cost. `utf8_percent_encode()` + `NON_ALPHANUMERIC` or a custom `AsciiSet` for path-safe encoding. Last release: 2025-08-21. |
-| `futures` | 0.3.32 | `join_all` / `try_join_all` for concurrent DAV fetches | Fixes findings #4 (sequential multi-calendar fetches) and #19 (sequential address-book fetches). Already a transitive dep. Prefer `futures::future::join_all` for ordered results (same order as input calendars). See JoinSet note below. Last release: 2026-02-15. |
-
----
-
-## Tokio Feature Narrowing (Finding #29)
-
-**Current:** `tokio = { version = "1.49.0", features = ["full"] }`
-
-**Problem:** `full` enables signal handling, file I/O, UDP, Unix sockets, test utilities, and process spawning — none of which this codebase uses today.
-
-**Verified actual tokio usage in codebase:**
-- `tokio::sync::Mutex` — requires `sync`
-- `#[tokio::main]` — requires `macros` + `rt-multi-thread`
-- `reqwest` internals use `rt-multi-thread` (multi-thread executor for connection pooling and `spawn_blocking` DNS resolution)
-
-**For signal handling (finding #17 — MCP graceful shutdown):**
-- `tokio::signal::ctrl_c()` requires `signal` feature
-
-**Recommended minimal feature set:**
-
-```toml
-tokio = { version = "1.49.0", features = [
-  "rt-multi-thread",   # multi-thread scheduler; required by reqwest connection pooling
-  "macros",            # #[tokio::main], #[tokio::test]
-  "sync",              # tokio::sync::Mutex used in MCP context
-  "time",              # tokio::time::timeout for DAV client timeout guards (finding #2, if using tokio timeout)
-  "signal",            # tokio::signal::ctrl_c() for graceful MCP shutdown (finding #17)
-] }
-```
-
-**Note on `time`:** The existing DAV timeout fix (finding #2) uses `std::time::Duration` with `reqwest::ClientBuilder::timeout()`, not `tokio::time`. Only add `time` if implementing explicit `tokio::time::timeout()` wrappers in the DAV layers. If the reqwest builder timeout is sufficient, `time` can be omitted.
-
-**Confidence:** MEDIUM — reqwest's internal tokio feature requirements are not explicitly documented. If compilation fails after narrowing, add `net` and/or `io-util` before reverting to `full`. Safe migration path: narrow in a dedicated commit with CI gating.
+| Capability Needed | Existing Dep | How It Covers Groups |
+|-------------------|-------------|----------------------|
+| PUT group vCard to CardDAV | `reqwest 0.13.1` | Same PUT pattern as `create_contact` / `update_contact` |
+| DELETE group vCard | `reqwest 0.13.1` | Same DELETE pattern as `delete_contact` |
+| Parse group vCard from REPORT response | `roxmltree 0.21.1` + existing `parse_vcard()` | Extend parse_vcard to detect `X-ADDRESSBOOKSERVER-KIND:group` and extract `X-ADDRESSBOOKSERVER-MEMBER` lines |
+| Serialize group vCard | existing `serialize_vcard()` pattern | Write a `serialize_group_vcard()` sibling that emits the X-ADDRESSBOOKSERVER properties |
+| List groups (REPORT query) | `reqwest 0.13.1` | Same `addressbook-query` REPORT as `list_contacts()` |
+| Generate group UID | `uuid 1` with `v4` feature | Already used for contacts; same `Uuid::new_v4()` call |
+| ETag-guarded writes | existing `map_write_response()` + `IF_MATCH` / `IF_NONE_MATCH` | Identical concurrency pattern; groups are just resources |
+| Error variants for group not found / conflict | `thiserror 2.0` in `src/error.rs` | Add `GroupNotFound` and `GroupConflict` variants — same pattern as ContactNotFound/ContactConflict |
+| CLI group subcommands | `clap 4.5` derive | Add `GroupCommands` enum under `contacts groups` — same pattern as `CalendarCommands` |
+| MCP GraphQL mutations/queries for groups | `async-graphql 7` | Add `GqlContactGroup`, `GqlContactGroupMutationResult` types; wire into `MutationRoot` / `QueryRoot` |
 
 ---
 
-## Concurrency Primitive Decision: `futures::join_all` vs `tokio::task::JoinSet`
+## Implementation Integration Points
 
-**Recommendation: `futures::future::join_all`** for findings #4 and #19.
+### 1. New `ContactGroup` Struct in `src/carddav/mod.rs`
 
-| Criterion | `futures::join_all` | `tokio::task::JoinSet` |
-|-----------|--------------------|-----------------------|
-| Result order | Preserves input order | Completion order (unordered) |
-| Spawning | Concurrent poll, no new OS threads | Spawns separate tokio tasks |
-| Cancellation | Cancel all on drop | Granular per-task abort |
-| Error handling | Returns `Vec<Result<T>>` | Result per `.join_next()` |
-| DAV fetch fit | Ideal — order matches addressbook list | Overkill for this use case |
-| Already a dep | Yes (transitive) | Yes (tokio `rt` feature) |
-
-`join_all` is correct for `list_events()` and `search_contacts()` because callers expect results in addressbook/calendar order, and failures should be surfaced per-book (finding #19 asks for error tolerance: log and continue, which fits `Vec<Result<T>>` iteration). `JoinSet` adds complexity with no benefit for this pattern.
-
-Use `try_join_all` only if you want first-error-wins semantics (not appropriate for tolerant per-book error handling).
-
----
-
-## async-graphql Depth/Complexity Limits (Finding #24)
-
-**No new dependency required.** The existing `async-graphql 7` `SchemaBuilder` already exposes these methods:
+Mirrors the existing `Contact` struct shape. Carries `href` and `etag` for write operations. `members` is a `Vec<String>` of bare UUIDs (without the `urn:uuid:` prefix — strip on parse, re-add on serialize).
 
 ```rust
-// In src/mcp/graphql/mod.rs, on the Schema::build(...) call:
-Schema::build(QueryRoot, MutationRoot, EmptySubscription)
-    .limit_depth(10)           // rejects queries nested > 10 levels deep
-    .limit_complexity(200)     // rejects queries with field count > 200
-    .limit_recursive_depth(32) // default is 32; set explicitly for clarity
-    .finish()
+pub struct ContactGroup {
+    pub id: String,
+    pub name: String,
+    pub members: Vec<String>,   // bare UUIDs of member contacts
+    pub href: Option<String>,
+    pub etag: Option<String>,
+}
 ```
 
-**Method signatures (verified against docs.rs async-graphql latest):**
-- `fn limit_depth(self, depth: usize) -> Self` — "Set the maximum depth a query can have. By default, there is no limit."
-- `fn limit_complexity(self, complexity: usize) -> Self` — "Set the maximum complexity a query can have. By default, there is no limit."
-- `fn limit_recursive_depth(self, depth: usize) -> Self` — "Set the maximum recursive depth a query can have. (default: 32)"
+### 2. Group vCard Parser Extension
 
-**Recommended values for this CLI/MCP context:**
-- `limit_depth(10)` — MCP tool calls are simple; legitimate queries never need more than 5-6 levels
-- `limit_complexity(200)` — generous for structured queries, blocks pathological fan-out
+`parse_vcard()` currently returns `Option<Contact>`. Add a parallel `parse_group_vcard()` that:
+- Detects `X-ADDRESSBOOKSERVER-KIND:group` line
+- Collects all `X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:<uid>` lines, stripping the `urn:uuid:` prefix
+- Returns `Option<ContactGroup>`
+
+The existing multistatus XML walk in `parse_contacts_from_xml()` can be extended or a parallel `parse_groups_from_xml()` written — same roxmltree traversal.
+
+**Filter concern:** `list_contacts()` must exclude group vCards. The existing parser already returns `None` for vCards without FN — but a group vCard does have FN. Add an explicit KIND filter: skip any vCard with `X-ADDRESSBOOKSERVER-KIND:group` in `parse_vcard()` to prevent groups from appearing in contact lists.
+
+### 3. Group vCard Serializer
+
+Write `serialize_group_vcard(group: &ContactGroup) -> String` alongside `serialize_vcard()`. Uses same `fold_line()`, same CRLF discipline. Emits `X-ADDRESSBOOKSERVER-KIND:group` once and one `X-ADDRESSBOOKSERVER-MEMBER` line per member UUID, with `urn:uuid:` prefix added.
+
+### 4. CardDavClient Methods
+
+Add to `CardDavClient` in `src/carddav/mod.rs`:
+- `list_groups(addressbook_href: &str) -> Result<Vec<ContactGroup>>`
+- `get_group_by_id(group_id: &str) -> Result<ContactGroup>`
+- `create_group(addressbook_href: &str, group: &ContactGroup) -> Result<ContactCreateResult>`
+- `update_group(href: &str, etag: &str, group: &ContactGroup) -> Result<String>`
+- `delete_group(href: &str, etag: &str, group_id: &str) -> Result<()>`
+
+`create_group` / `update_group` / `delete_group` reuse `map_write_response()` directly — same HTTP semantics, same ETag guard, same error mapping. The only difference is `serialize_group_vcard()` instead of `serialize_vcard()`.
+
+`Content-Type` header stays `text/vcard; charset=utf-8` — groups are still vCard resources.
+
+The `build_contact_href()` helper can be reused as-is for groups — the `.vcf` extension and URL pattern are identical.
+
+### 5. Error Variants (no new dep)
+
+Add to `src/error.rs`:
+```rust
+#[error("Contact group not found: {0}")]
+GroupNotFound(String),
+
+#[error("Contact group conflict for '{id}': sent ETag '{sent_etag}', server has '{server_etag:?}'")]
+GroupConflict {
+    id: String,
+    sent_etag: String,
+    server_etag: Option<String>,
+}
+```
+
+### 6. CLI Commands (`src/commands/contacts.rs`)
+
+Add a `GroupCommands` enum under `contacts groups <subcommand>`:
+- `create --name <name> [--member <uid>]...`
+- `list`
+- `get <id>`
+- `update <id> [--name <name>] [--add-member <uid>]... [--remove-member <uid>]... [--clear-members]`
+- `delete <id> --confirm`
+
+The `--group <id>` flag on `contacts create` calls `create_contact_record()` as before then calls `add_member_to_group()` (which is just `update_group` with the new contact UID appended to `members`).
+
+### 7. MCP/GraphQL Surface (`src/mcp/graphql/`)
+
+Add to `types.rs`:
+- `GqlContactGroup` (SimpleObject) — mirrors `ContactGroup` with `members: Vec<String>`
+- `GqlContactGroupMutationResult` (SimpleObject) — mirrors `GqlContactMutationResult`
+
+Add to `query.rs`: `list_groups`, `get_group` resolvers.
+Add to `mutation.rs`: `create_group`, `update_group`, `delete_group`, `add_group_member`, `remove_group_member` resolvers.
 
 ---
 
@@ -113,78 +155,34 @@ Schema::build(QueryRoot, MutationRoot, EmptySubscription)
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| `mockito` | Global/single-threaded mock state; breaks parallel tests | `wiremock` |
-| `httpmock` | Less ecosystem traction, fewer matchers, less tokio integration documentation | `wiremock` |
-| `mockall` | Requires production-code trait refactor for every HTTP call; high noise-to-signal | `wiremock` |
-| `redact` crate (0.1.x) | Niche, low adoption, no zeroize integration | `secrecy` 0.10.x |
-| `veil` crate | Derive macro for Debug redaction only — doesn't wipe memory | `secrecy` |
-| Custom `Debug` impl on Config | Manual maintenance burden, no memory zeroing | `secrecy::SecretString` |
-| `urlencoding` crate | Thin wrapper with less control over which chars are encoded; `percent-encoding` is already a transitive dep | `percent-encoding` |
-| `tokio::full` (long-term) | Compiles unused subsystems; slower CI builds on cold caches | Minimal feature list above |
-| `ical` / `icalendar` crates | Not needed for v1.2; custom iCal serialization already ships | Keep existing approach |
+| Any vCard 4.0 `KIND:group` / `MEMBER:` serialization | Fastmail's server is vCard 3.0; vCard 4.0 properties will be stored as opaque X- extensions at best, silently ignored at worst | `X-ADDRESSBOOKSERVER-KIND:group` + `X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:…` |
+| A dedicated vCard parsing crate (e.g., `ical`, `vcard4`) | Adds a dep for something already implemented in 150 lines of existing, tested Rust; external crates vary in vCard 3.0 support | Extend existing `parse_vcard()` / `serialize_vcard()` in `src/carddav/mod.rs` |
+| A separate CardDAV collection for groups | Groups are plain `.vcf` resources in the same address book; no MKCOL or special path logic is needed | PUT group vCards into `default_addressbook_href()` like contacts |
+| A `CATEGORIES` field approach | Fastmail ignores CATEGORIES; group membership would not survive a round-trip through the Fastmail web UI | Apple X-ADDRESSBOOKSERVER approach |
+| Fetching group members transitively on list | Every `list_groups` call would trigger N additional lookups; members are identifiers, not embedded objects | Return member UUIDs in `ContactGroup.members`; caller resolves by ID if needed |
 
 ---
 
-## Installation
+## Cargo.toml Changes
 
-```toml
-# Cargo.toml additions for v1.2
-
-[dependencies]
-# Secret redaction — fixes #15
-secrecy = { version = "0.10.3", features = ["serde"] }
-
-# URL encoding — fixes #30; percent-encoding is already a transitive dep,
-# but pin it explicitly so the version is stable and the usage is auditable
-percent-encoding = "2.3"
-
-# Concurrent DAV fetches — fixes #4, #19; futures is already a transitive dep
-futures = { version = "0.3", default-features = false, features = ["alloc"] }
-
-# Narrow tokio features — fixes #29
-tokio = { version = "1.49.0", features = [
-  "rt-multi-thread",
-  "macros",
-  "sync",
-  "signal",
-  # "time" — add only if tokio::time::timeout wrappers are introduced
-] }
-
-[dev-dependencies]
-# Integration test mock server — fixes #7
-wiremock = "0.6.5"
-```
-
-**Note on `secrecy` serde feature:** The `serde` feature allows deserializing directly into `SecretString` from the TOML config file. Without it, you must deserialize into `String` then wrap. Since `Config` is loaded from TOML via `serde`, enabling `serde` is the clean path.
-
-**Note on `futures` features:** `default-features = false, features = ["alloc"]` pulls in `join_all` / `try_join_all` without the `executor` and `io` features that overlap with tokio. This keeps the dep minimal and avoids runtime conflicts.
+**None required.** No additions, no removals, no feature flag changes.
 
 ---
 
 ## Version Compatibility
 
-| Package | Compatible With | Notes |
-|---------|-----------------|-------|
-| `wiremock 0.6.5` | `tokio ^1.47.1`, `reqwest 0.13.x` | wiremock's own Cargo.lock pins tokio ^1.47.1; compatible with project's 1.49.0 |
-| `secrecy 0.10.3` | `serde 1.0.x`, `zeroize 1.x` | No conflicts with existing deps; MSRV 1.60 |
-| `percent-encoding 2.3.2` | `reqwest 0.13.x` (already deps it via `url`) | Pinning same major version that reqwest already resolved |
-| `futures 0.3.32` | `tokio 1.x`, `reqwest 0.13.x` | Already transitive; making explicit has zero version risk |
-| Narrowed `tokio` features | `rmcp 0.12`, `reqwest 0.13.1`, `async-graphql 7` | If rmcp or reqwest require features not in the narrow list, compiler will error clearly — safe to discover |
+All existing deps are compatible with the group implementation — no new interactions to validate. The only constraint is that `roxmltree 0.21.1` continues to parse multi-value `X-ADDRESSBOOKSERVER-MEMBER` lines correctly; this is guaranteed because they are plain text node children of `<card:address-data>`, identical to any other vCard property line.
 
 ---
 
 ## Sources
 
-- `docs.rs/wiremock/latest` — version 0.6.5, release date 2025-08-24, tokio ^1.47.1 dependency confirmed
-- `docs.rs/secrecy/latest` — version 0.10.3, release date 2024-10-09, `SecretString` API and `[REDACTED]` Debug behavior confirmed
-- `docs.rs/percent-encoding/latest` — version 2.3.2, release date 2025-08-21, `utf8_percent_encode` API confirmed
-- `docs.rs/futures/latest` — version 0.3.32, release date 2026-02-15
-- `async-graphql.github.io/async-graphql/en/depth_and_complexity.html` — `limit_depth` / `limit_complexity` builder methods confirmed for async-graphql 7
-- `docs.rs/async-graphql/latest/async_graphql/struct.SchemaBuilder.html` — exact method signatures and defaults verified
-- `docs.rs/tokio/latest/tokio/index.html` — feature flag breakdown: `rt`, `rt-multi-thread`, `sync`, `macros`, `time`, `signal` definitions verified
-- GitHub: `LukeMathWalker/wiremock-rs` — `method("PROPFIND")` string-based matching confirmed, parallel test isolation design confirmed
-- Rust Users Forum + GitHub tokio#2057 — reqwest internal tokio dependency discussion (informs MEDIUM confidence on feature narrowing)
+- [RFC 6350 — vCard Format Specification](https://www.rfc-editor.org/rfc/rfc6350.html) — KIND and MEMBER properties (vCard 4.0); confirms X-ADDRESSBOOKSERVER-* are vCard 3.0 equivalents
+- [rcmcarddav GROUPS.md](https://github.com/mstilkerich/rcmcarddav/blob/master/doc/GROUPS.md) — X-ADDRESSBOOKSERVER-KIND/MEMBER format, vCard 3.0 vs 4.0 mapping, confirmed HIGH confidence
+- [DAVx5 tested-with/fastmail](https://www.davx5.com/tested-with/fastmail) — confirms Fastmail uses "Groups are separate vCards" (not CATEGORIES), MEDIUM confidence
+- [Nextcloud issue #9369](https://github.com/nextcloud/server/issues/9369) — confirms `urn:uuid:` URI format in X-ADDRESSBOOKSERVER-MEMBER, vCard3 repeating property pattern, MEDIUM confidence
+- WebSearch: Fastmail vCard 3.0 format and X-ADDRESSBOOKSERVER-KIND:group usage — corroborates Apple-style group format, MEDIUM confidence (multiple independent sources agree)
 
 ---
-*Stack research for: fastmail-cli v1.2 Hardening & Quality*
-*Researched: 2026-04-04*
+*Stack research for: fastmail-cli v1.3 Contact Groups*
+*Researched: 2026-04-13*
