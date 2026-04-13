@@ -1,0 +1,90 @@
+# Requirements: Fastmail CLI v1.3 Contact Groups
+
+**Defined:** 2026-04-13
+**Core Value:** Users can manage Fastmail data without leaving the terminal or AI assistant, with automation-friendly APIs that stay faithful to Fastmail's actual protocol boundaries.
+
+## v1.3 Requirements
+
+Requirements for contact group management. Each maps to roadmap phases.
+
+### Group Data Model & Parser
+
+- [ ] **GRP-01**: User can list contact groups showing name, member count, and group ID
+- [ ] **GRP-02**: User can create an empty contact group with a name
+- [ ] **GRP-03**: User can get a group's details including resolved member contacts
+- [ ] **GRP-04**: User can rename an existing contact group
+- [ ] **GRP-05**: User can delete a contact group (members are NOT deleted)
+
+### Group Membership
+
+- [ ] **MBR-01**: User can add a contact to a group
+- [ ] **MBR-02**: User can remove a contact from a group
+- [ ] **MBR-03**: User can create a contact and assign it to a group in one command via `--group`
+
+### CLI Surface
+
+- [ ] **CLI-01**: User can manage groups via `contacts groups` subcommands (list, create, get, rename, delete)
+- [ ] **CLI-02**: User can manage membership via `contacts groups add-member` and `remove-member`
+- [ ] **CLI-03**: Group delete requires `--confirm` flag, consistent with contact delete
+- [ ] **CLI-04**: `contacts create --group <id>` assigns the new contact to a group at creation
+
+### MCP/GraphQL Surface
+
+- [ ] **MCP-01**: AI agents can query groups via `listGroups` and `getGroup` (with resolved member contacts)
+- [ ] **MCP-02**: AI agents can mutate groups via `createGroup`, `renameGroup`, `deleteGroup`
+- [ ] **MCP-03**: AI agents can manage membership via `addGroupMember`, `removeGroupMember`
+
+## Future Requirements
+
+Deferred to future release. Tracked but not in current roadmap.
+
+### Group Enhancements
+
+- **GRP-06**: User can filter contact list by group membership (`contacts list --group <id>`)
+- **GRP-07**: Group membership validation warns on unknown contact UIDs before adding
+- **GRP-08**: User can bulk add/remove multiple contacts from a group in one command
+
+### Cross-Feature
+
+- **XFEAT-01**: User can send email to all members of a contact group (`send --to-group <id>`)
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| CATEGORIES-type group support | Fastmail uses X-ADDRESSBOOKSERVER vCard-type groups, not CATEGORIES |
+| Delete group cascading to member contacts | Contacts may belong to multiple groups; destructive and hard to undo |
+| Cross-address-book group sync | Fastmail typical setup is single address book; not a CardDAV primitive |
+| Group ACL/sharing management | Separate protocol surface, significant expansion beyond CRUD |
+| vCard 4.0 KIND:group format | Fastmail uses vCard 3.0 with X-ADDRESSBOOKSERVER extensions |
+
+## Traceability
+
+Which phases cover which requirements. Updated during roadmap creation.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| GRP-01 | — | Pending |
+| GRP-02 | — | Pending |
+| GRP-03 | — | Pending |
+| GRP-04 | — | Pending |
+| GRP-05 | — | Pending |
+| MBR-01 | — | Pending |
+| MBR-02 | — | Pending |
+| MBR-03 | — | Pending |
+| CLI-01 | — | Pending |
+| CLI-02 | — | Pending |
+| CLI-03 | — | Pending |
+| CLI-04 | — | Pending |
+| MCP-01 | — | Pending |
+| MCP-02 | — | Pending |
+| MCP-03 | — | Pending |
+
+**Coverage:**
+- v1.3 requirements: 15 total
+- Mapped to phases: 0
+- Unmapped: 15 ⚠️
+
+---
+*Requirements defined: 2026-04-13*
+*Last updated: 2026-04-13 after initial definition*
