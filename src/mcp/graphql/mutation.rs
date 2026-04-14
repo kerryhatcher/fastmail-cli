@@ -409,6 +409,46 @@ impl MutationRoot {
         }
     }
 
+    /// Add a contact to a group. Returns the updated group with resolved members.
+    async fn add_group_member(
+        &self,
+        ctx: &Context<'_>,
+        #[graphql(desc = "Group ID (UID)")] group_id: String,
+        #[graphql(desc = "Contact ID (UID)")] contact_id: String,
+    ) -> Result<GqlContactGroup> {
+        let app_ctx = ctx.data::<super::AppContext>()?;
+        let carddav = app_ctx.get_carddav().await?;
+        let updated = carddav
+            .add_group_member(&group_id, &contact_id)
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        let members = carddav
+            .resolve_group_members(&updated)
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        Ok(GqlContactGroup::with_members(updated, members))
+    }
+
+    /// Remove a contact from a group. Returns the updated group with resolved members.
+    async fn remove_group_member(
+        &self,
+        ctx: &Context<'_>,
+        #[graphql(desc = "Group ID (UID)")] group_id: String,
+        #[graphql(desc = "Contact ID (UID)")] contact_id: String,
+    ) -> Result<GqlContactGroup> {
+        let app_ctx = ctx.data::<super::AppContext>()?;
+        let carddav = app_ctx.get_carddav().await?;
+        let updated = carddav
+            .remove_group_member(&group_id, &contact_id)
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        let members = carddav
+            .resolve_group_members(&updated)
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        Ok(GqlContactGroup::with_members(updated, members))
+    }
+
     async fn create_event(
         &self,
         #[graphql(
