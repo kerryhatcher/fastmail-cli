@@ -13,8 +13,8 @@ Users can manage Fastmail data without leaving the terminal or AI assistant, wit
 - Shipped milestone: `v1.2` on 2026-04-05
 - Delivered: Hardening & Quality — 32 in-scope codebase-review findings closed across safety, security, MCP refactor, performance, integration test coverage, and polish
 - Previous: `v1.1` (2026-04-04) — CalDAV calendar and event management; `v1.0` (2026-04-03) — CardDAV contact CRUD
-- In progress: `v1.3` Contact Groups — Phase 18 complete (group CRUD + CLI + MCP surfaces), Phase 19 pending (membership management)
-- Codebase: 203 tests passing, zero clippy warnings
+- All phases complete: `v1.3` Contact Groups — Phase 18 (group CRUD + CLI + MCP surfaces) + Phase 19 (membership management + --group flag) delivered
+- Codebase: 206 tests passing, zero clippy warnings
 - Known deferred: live-account integration validation for SIGTERM, OnceCell reuse, and CalDAV UID REPORT (Cyrus IMAP quirks)
 
 ## Requirements
