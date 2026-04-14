@@ -68,6 +68,21 @@ pub struct ContactCreateResult {
     pub etag: Option<String>,
 }
 
+/// A contact group parsed from a group vCard (X-ADDRESSBOOKSERVER-KIND:group)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ContactGroup {
+    /// Unique ID (from UID property)
+    pub id: String,
+    /// Display name (FN property)
+    pub name: String,
+    /// Member contact UIDs (extracted from X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:<uid> lines)
+    pub member_uids: Vec<String>,
+    /// Server-assigned resource URL
+    pub href: Option<String>,
+    /// HTTP ETag for optimistic concurrency
+    pub etag: Option<String>,
+}
+
 /// CardDAV client
 pub struct CardDavClient {
     client: Client,
@@ -426,6 +441,198 @@ impl CardDavClient {
         map_write_response(&contact, Some(etag), status, &headers, &body)?;
         Ok(())
     }
+
+    /// List all contact groups across all address books.
+    #[instrument(skip(self))]
+    pub async fn list_groups(&self) -> Result<Vec<ContactGroup>> {
+        let addressbooks = self.list_addressbooks().await?;
+        let futures: Vec<_> = addressbooks
+            .into_iter()
+            .map(|ab| self.fetch_addressbook_groups(ab.href))
+            .collect();
+        let results = join_all(futures).await;
+        Ok(collect_partial_groups(results))
+    }
+
+    /// Fetch all group vCards from a single address book.
+    async fn fetch_addressbook_groups(
+        &self,
+        addressbook_href: String,
+    ) -> Result<(String, Vec<ContactGroup>)> {
+        let url = format!("{}{}", self.base_url, addressbook_href);
+
+        let body = r#"<?xml version="1.0" encoding="utf-8"?>
+<card:addressbook-query xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">
+  <d:prop>
+    <d:getetag/>
+    <card:address-data/>
+  </d:prop>
+</card:addressbook-query>"#;
+
+        let response = self
+            .client
+            .request(reqwest::Method::from_bytes(b"REPORT").unwrap(), &url)
+            .basic_auth(&self.username, Some(&self.app_password))
+            .header("Content-Type", "application/xml")
+            .header("Depth", "1")
+            .body(body)
+            .send()
+            .await?;
+
+        let status = response.status();
+        let text: String = response.text().await?;
+
+        if !status.is_success() && status.as_u16() != 207 {
+            return Err(Error::Server(format!(
+                "CardDAV REPORT failed for {addressbook_href}: {status} - {text}"
+            )));
+        }
+
+        parse_groups_from_xml(&text).map(|groups| (addressbook_href, groups))
+    }
+
+    /// Find a group by exact ID across all address books.
+    #[instrument(skip(self))]
+    pub async fn get_group_by_id(&self, group_id: &str) -> Result<ContactGroup> {
+        let groups = self.list_groups().await?;
+        groups
+            .into_iter()
+            .find(|g| g.id == group_id)
+            .ok_or_else(|| Error::GroupNotFound(group_id.to_string()))
+    }
+
+    /// Find a group by exact name (case-sensitive) across all address books.
+    ///
+    /// Returns GroupNotFound if zero matches, GroupAmbiguous if multiple matches.
+    #[instrument(skip(self))]
+    pub async fn get_group_by_name(&self, name: &str) -> Result<ContactGroup> {
+        let groups = self.list_groups().await?;
+        let mut matches: Vec<ContactGroup> = groups.into_iter().filter(|g| g.name == name).collect();
+        match matches.len() {
+            0 => Err(Error::GroupNotFound(name.to_string())),
+            1 => Ok(matches.remove(0)),
+            _ => Err(Error::GroupAmbiguous(name.to_string())),
+        }
+    }
+
+    /// Create a new contact group in the given address book.
+    #[instrument(skip(self, group))]
+    pub async fn create_group(
+        &self,
+        addressbook_href: &str,
+        group: &ContactGroup,
+    ) -> Result<ContactCreateResult> {
+        let href = build_group_href(addressbook_href, &group.id);
+        let url = format!("{}{}", self.base_url, href);
+        let vcard = serialize_group_vcard(group);
+
+        let response = self
+            .client
+            .put(&url)
+            .basic_auth(&self.username, Some(&self.app_password))
+            .header("Content-Type", "text/vcard; charset=utf-8")
+            .header(IF_NONE_MATCH, "*")
+            .body(vcard)
+            .send()
+            .await?;
+
+        let status = response.status();
+        let headers = response.headers().clone();
+        let body = response.text().await?;
+
+        debug!(status = %status, href = %href, "PUT create_group response");
+
+        let etag = map_group_write_response(&group.id, None, status, &headers, &body)?;
+        let created_href = extract_location_path(&headers).unwrap_or(href);
+
+        Ok(ContactCreateResult {
+            href: created_href,
+            etag,
+        })
+    }
+
+    /// Rename a contact group, returning the new ETag.
+    #[instrument(skip(self, group))]
+    pub async fn rename_group(
+        &self,
+        href: &str,
+        etag: &str,
+        group: &ContactGroup,
+        new_name: &str,
+    ) -> Result<String> {
+        let updated = ContactGroup {
+            id: group.id.clone(),
+            name: new_name.to_string(),
+            member_uids: group.member_uids.clone(),
+            href: group.href.clone(),
+            etag: group.etag.clone(),
+        };
+        let url = format!("{}{}", self.base_url, href);
+        let vcard = serialize_group_vcard(&updated);
+
+        let response = self
+            .client
+            .put(&url)
+            .basic_auth(&self.username, Some(&self.app_password))
+            .header("Content-Type", "text/vcard; charset=utf-8")
+            .header(IF_MATCH, etag)
+            .body(vcard)
+            .send()
+            .await?;
+
+        let status = response.status();
+        let headers = response.headers().clone();
+        let body = response.text().await?;
+
+        debug!(status = %status, href = %href, "PUT rename_group response");
+
+        let new_etag =
+            map_group_write_response(&group.id, Some(etag), status, &headers, &body)?
+                .unwrap_or_else(|| etag.to_string());
+        Ok(new_etag)
+    }
+
+    /// Delete a contact group by href and ETag.
+    #[instrument(skip(self))]
+    pub async fn delete_group(&self, href: &str, etag: &str, group_id: &str) -> Result<()> {
+        let url = format!("{}{}", self.base_url, href);
+
+        let response = self
+            .client
+            .delete(&url)
+            .basic_auth(&self.username, Some(&self.app_password))
+            .header(IF_MATCH, etag)
+            .send()
+            .await?;
+
+        let status = response.status();
+        let headers = response.headers().clone();
+        let body = response.text().await?;
+
+        debug!(status = %status, href = %href, "DELETE delete_group response");
+
+        map_group_write_response(group_id, Some(etag), status, &headers, &body)?;
+        Ok(())
+    }
+
+    /// Resolve all member contacts for a group in a single batch fetch.
+    ///
+    /// Fetches all contacts across all address books once, then filters in-memory
+    /// by group.member_uids. Avoids N+1 HTTP calls.
+    #[instrument(skip(self, group))]
+    pub async fn resolve_group_members(&self, group: &ContactGroup) -> Result<Vec<Contact>> {
+        let addressbooks = self.list_addressbooks().await?;
+        let mut all_contacts: Vec<Contact> = Vec::new();
+        for ab in addressbooks {
+            let contacts = self.list_contacts(&ab.href).await?;
+            all_contacts.extend(contacts);
+        }
+        let members: Vec<Contact> = all_contacts
+            .into_iter()
+            .filter(|c| group.member_uids.contains(&c.id))
+            .collect();
+        Ok(members)
+    }
 }
 
 /// Parse CardDAV multistatus XML into a list of contacts.
@@ -540,6 +747,178 @@ fn map_write_response(
     }
 }
 
+/// Parse a group vCard string into a ContactGroup.
+///
+/// Returns None if the vCard does not have X-ADDRESSBOOKSERVER-KIND:group or has no FN.
+fn parse_group_vcard(
+    vcard_str: &str,
+    href: Option<String>,
+    etag: Option<String>,
+) -> Option<ContactGroup> {
+    let unfolded = unfold_vcard(vcard_str);
+    let mut id = String::new();
+    let mut name = String::new();
+    let mut member_uids: Vec<String> = Vec::new();
+    let mut is_group = false;
+
+    for line in unfolded.lines() {
+        let line = line.trim();
+        if line.eq_ignore_ascii_case("X-ADDRESSBOOKSERVER-KIND:group") {
+            is_group = true;
+        } else if line.starts_with("UID") && line.contains(':') {
+            id = line.split_once(':').map(|(_, v)| v).unwrap_or("").to_string();
+        } else if line.starts_with("FN") && line.contains(':') {
+            let raw_val = line.split_once(':').map(|(_, v)| v).unwrap_or("");
+            name = unescape_value(raw_val);
+        } else if line
+            .to_uppercase()
+            .starts_with("X-ADDRESSBOOKSERVER-MEMBER:")
+        {
+            // Line format: X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:<uid>
+            if let Some(val) = line.split_once(':').map(|(_, v)| v) {
+                // val is "urn:uuid:<uid>"
+                let uid = val
+                    .strip_prefix("urn:uuid:")
+                    .unwrap_or(val)
+                    .to_string();
+                if !uid.is_empty() {
+                    member_uids.push(uid);
+                }
+            }
+        }
+    }
+
+    if !is_group || name.is_empty() {
+        return None;
+    }
+
+    if id.is_empty() {
+        id = Uuid::new_v4().to_string();
+    }
+
+    Some(ContactGroup {
+        id,
+        name,
+        member_uids,
+        href,
+        etag,
+    })
+}
+
+/// Serialize a ContactGroup to a vCard 3.0 string with X-ADDRESSBOOKSERVER extensions.
+///
+/// Emits X-ADDRESSBOOKSERVER-KIND:group and one X-ADDRESSBOOKSERVER-MEMBER line per member UID.
+pub fn serialize_group_vcard(group: &ContactGroup) -> String {
+    let mut lines: Vec<String> = Vec::new();
+
+    lines.push("BEGIN:VCARD".to_string());
+    lines.push("VERSION:3.0".to_string());
+    lines.push(format!("UID:{}", group.id));
+    lines.push(format!("FN:{}", escape_value(&group.name)));
+    lines.push("X-ADDRESSBOOKSERVER-KIND:group".to_string());
+
+    for uid in &group.member_uids {
+        lines.push(format!("X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:{uid}"));
+    }
+
+    lines.push("END:VCARD".to_string());
+
+    lines.iter().map(|l| fold_line(l)).collect::<String>()
+}
+
+/// Parse CardDAV multistatus XML into a list of contact groups.
+///
+/// Mirrors parse_contacts_from_xml but calls parse_group_vcard instead of parse_vcard.
+fn parse_groups_from_xml(xml: &str) -> Result<Vec<ContactGroup>> {
+    let doc = roxmltree::Document::parse(xml)
+        .map_err(|e| Error::Server(format!("Failed to parse XML: {e}")))?;
+
+    let dav_ns = "DAV:";
+    let carddav_ns = "urn:ietf:params:xml:ns:carddav";
+    let mut groups = Vec::new();
+
+    for response in doc
+        .descendants()
+        .filter(|n| n.has_tag_name((dav_ns, "response")))
+    {
+        let href = response
+            .descendants()
+            .find(|n| n.has_tag_name((dav_ns, "href")))
+            .and_then(|n| n.text())
+            .map(|s| s.to_string());
+
+        let etag = response
+            .descendants()
+            .find(|n| n.has_tag_name((dav_ns, "getetag")))
+            .and_then(|n| n.text())
+            .map(|s| s.to_string());
+
+        if let Some(vcard_data) = response
+            .descendants()
+            .find(|n| n.has_tag_name((carddav_ns, "address-data")))
+            .and_then(|n| n.text())
+            && let Some(group) = parse_group_vcard(vcard_data, href, etag)
+        {
+            groups.push(group);
+        }
+    }
+
+    groups.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(groups)
+}
+
+/// Build a CardDAV resource href for a group vCard.
+///
+/// Mirrors build_contact_href: `{addressbook_href}/{group_id}.vcf`
+fn build_group_href(addressbook_href: &str, group_id: &str) -> String {
+    let trimmed = addressbook_href.trim_end_matches('/');
+    format!("{trimmed}/{group_id}.vcf")
+}
+
+/// Map a CardDAV write response for a group, returning the new ETag or an appropriate error.
+///
+/// Mirrors map_write_response but uses GroupConflict/GroupNotFound error variants.
+fn map_group_write_response(
+    group_id: &str,
+    sent_etag: Option<&str>,
+    status: reqwest::StatusCode,
+    headers: &HeaderMap,
+    body: &str,
+) -> Result<Option<String>> {
+    if matches!(
+        status,
+        reqwest::StatusCode::CREATED | reqwest::StatusCode::NO_CONTENT | reqwest::StatusCode::OK
+    ) {
+        return Ok(header_value(headers, ETAG));
+    }
+
+    match status {
+        reqwest::StatusCode::PRECONDITION_FAILED => Err(Error::GroupConflict {
+            id: group_id.to_string(),
+            sent_etag: sent_etag.unwrap_or_default().to_string(),
+            server_etag: header_value(headers, ETAG),
+        }),
+        reqwest::StatusCode::NOT_FOUND => Err(Error::GroupNotFound(group_id.to_string())),
+        _ => Err(Error::Server(format!(
+            "CardDAV group write failed for {group_id}: {status} - {body}"
+        ))),
+    }
+}
+
+/// Flatten results from concurrent per-book group fetches, logging warnings for failures.
+fn collect_partial_groups(results: Vec<Result<(String, Vec<ContactGroup>)>>) -> Vec<ContactGroup> {
+    let mut all = Vec::new();
+    for result in results {
+        match result {
+            Ok((_, groups)) => all.extend(groups),
+            Err(e) => {
+                warn!(error = %e, "CardDAV list_groups: book fetch failed");
+            }
+        }
+    }
+    all
+}
+
 /// Unfold vCard lines per RFC 6350 §3.2: continuation lines start with a space or tab.
 fn unfold_vcard(raw: &str) -> String {
     let mut result = String::with_capacity(raw.len());
@@ -590,8 +969,19 @@ fn decode_qp(s: &str) -> String {
 }
 
 /// Parse a vCard string into a Contact
+///
+/// Returns None for group vCards (X-ADDRESSBOOKSERVER-KIND:group) — use parse_group_vcard instead.
 fn parse_vcard(vcard_str: &str, href: Option<String>, etag: Option<String>) -> Option<Contact> {
     let unfolded = unfold_vcard(vcard_str);
+
+    // Early return: filter out group vCards so they don't leak into contact lists
+    for line in unfolded.lines() {
+        let line = line.trim();
+        if line.eq_ignore_ascii_case("X-ADDRESSBOOKSERVER-KIND:group") {
+            return None;
+        }
+    }
+
     let mut id = String::new();
     let mut name = String::new();
     let mut emails = Vec::new();
@@ -1730,5 +2120,223 @@ END:VCARD</card:address-data>
         ];
         let contacts = collect_partial_contacts(results);
         assert!(contacts.is_empty());
+    }
+
+    // ===== ContactGroup / group vCard tests =====
+
+    fn make_group_vcard(uid: &str, name: &str, members: &[&str]) -> String {
+        let mut lines = vec![
+            "BEGIN:VCARD".to_string(),
+            "VERSION:3.0".to_string(),
+            format!("UID:{uid}"),
+            format!("FN:{name}"),
+            "X-ADDRESSBOOKSERVER-KIND:group".to_string(),
+        ];
+        for m in members {
+            lines.push(format!("X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:{m}"));
+        }
+        lines.push("END:VCARD".to_string());
+        lines.join("\n")
+    }
+
+    #[test]
+    fn test_parse_group_vcard_valid() {
+        let vcard = make_group_vcard("grp-001", "Friends", &["uid-1", "uid-2"]);
+        let group = parse_group_vcard(&vcard, None, None).unwrap();
+        assert_eq!(group.id, "grp-001");
+        assert_eq!(group.name, "Friends");
+        assert_eq!(group.member_uids, vec!["uid-1", "uid-2"]);
+        assert!(group.href.is_none());
+        assert!(group.etag.is_none());
+    }
+
+    #[test]
+    fn test_parse_group_vcard_non_group_returns_none() {
+        let vcard =
+            "BEGIN:VCARD\nVERSION:3.0\nUID:abc\nFN:Alice Smith\nEMAIL:alice@example.com\nEND:VCARD";
+        assert!(parse_group_vcard(vcard, None, None).is_none());
+    }
+
+    #[test]
+    fn test_parse_group_vcard_missing_fn_returns_none() {
+        let vcard = "BEGIN:VCARD\nVERSION:3.0\nUID:grp-001\nX-ADDRESSBOOKSERVER-KIND:group\nEND:VCARD";
+        assert!(parse_group_vcard(vcard, None, None).is_none());
+    }
+
+    #[test]
+    fn test_parse_group_vcard_multiple_members() {
+        let vcard = make_group_vcard("grp-002", "Work", &["a", "b", "c"]);
+        let group = parse_group_vcard(&vcard, None, None).unwrap();
+        assert_eq!(group.member_uids.len(), 3);
+        assert_eq!(group.member_uids[0], "a");
+        assert_eq!(group.member_uids[1], "b");
+        assert_eq!(group.member_uids[2], "c");
+    }
+
+    #[test]
+    fn test_parse_vcard_filters_group() {
+        let vcard = make_group_vcard("grp-001", "Friends", &["uid-1"]);
+        // parse_vcard must return None for group vCards
+        assert!(parse_vcard(&vcard, None, None).is_none());
+    }
+
+    #[test]
+    fn test_serialize_group_vcard_structure() {
+        let group = ContactGroup {
+            id: "grp-001".to_string(),
+            name: "Friends".to_string(),
+            member_uids: vec!["uid-1".to_string(), "uid-2".to_string()],
+            href: None,
+            etag: None,
+        };
+        let output = serialize_group_vcard(&group);
+        assert!(output.contains("BEGIN:VCARD"));
+        assert!(output.contains("VERSION:3.0"));
+        assert!(output.contains("UID:grp-001"));
+        assert!(output.contains("FN:Friends"));
+        assert!(output.contains("X-ADDRESSBOOKSERVER-KIND:group"));
+        assert!(output.contains("X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:uid-1"));
+        assert!(output.contains("X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:uid-2"));
+        assert!(output.contains("END:VCARD"));
+    }
+
+    #[test]
+    fn test_serialize_group_vcard_empty_members() {
+        let group = ContactGroup {
+            id: "grp-002".to_string(),
+            name: "Empty".to_string(),
+            member_uids: vec![],
+            href: None,
+            etag: None,
+        };
+        let output = serialize_group_vcard(&group);
+        assert!(!output.contains("X-ADDRESSBOOKSERVER-MEMBER"));
+    }
+
+    #[test]
+    fn test_parse_groups_from_xml_extracts_only_groups() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">
+  <d:response>
+    <d:href>/dav/addressbooks/user/test/Default/contact1.vcf</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:getetag>"etag-contact"</d:getetag>
+        <card:address-data>BEGIN:VCARD
+VERSION:3.0
+UID:uid-contact
+FN:Alice Smith
+END:VCARD</card:address-data>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/dav/addressbooks/user/test/Default/group1.vcf</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:getetag>"etag-group"</d:getetag>
+        <card:address-data>BEGIN:VCARD
+VERSION:3.0
+UID:grp-001
+FN:Friends
+X-ADDRESSBOOKSERVER-KIND:group
+X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:uid-contact
+END:VCARD</card:address-data>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>"#;
+        let groups = parse_groups_from_xml(xml).unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].id, "grp-001");
+        assert_eq!(groups[0].name, "Friends");
+        assert_eq!(groups[0].member_uids, vec!["uid-contact"]);
+        assert_eq!(
+            groups[0].href,
+            Some("/dav/addressbooks/user/test/Default/group1.vcf".to_string())
+        );
+        assert_eq!(groups[0].etag, Some("\"etag-group\"".to_string()));
+    }
+
+    #[test]
+    fn test_build_group_href() {
+        assert_eq!(
+            build_group_href("/dav/addressbooks/user/test/Default/", "grp-123"),
+            "/dav/addressbooks/user/test/Default/grp-123.vcf"
+        );
+    }
+
+    #[test]
+    fn test_map_group_write_response_success() {
+        let mut headers = HeaderMap::new();
+        headers.insert(ETAG, HeaderValue::from_static("\"etag-group-new\""));
+        let result =
+            map_group_write_response("grp-001", None, StatusCode::CREATED, &headers, "").unwrap();
+        assert_eq!(result.as_deref(), Some("\"etag-group-new\""));
+    }
+
+    #[test]
+    fn test_map_group_write_response_conflict() {
+        let mut headers = HeaderMap::new();
+        headers.insert(ETAG, HeaderValue::from_static("\"etag-server\""));
+        let err = map_group_write_response(
+            "grp-001",
+            Some("\"etag-old\""),
+            StatusCode::PRECONDITION_FAILED,
+            &headers,
+            "",
+        )
+        .unwrap_err();
+        match err {
+            Error::GroupConflict {
+                id,
+                sent_etag,
+                server_etag,
+            } => {
+                assert_eq!(id, "grp-001");
+                assert_eq!(sent_etag, "\"etag-old\"");
+                assert_eq!(server_etag.as_deref(), Some("\"etag-server\""));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_map_group_write_response_not_found() {
+        let err = map_group_write_response(
+            "grp-001",
+            Some("\"etag-old\""),
+            StatusCode::NOT_FOUND,
+            &HeaderMap::new(),
+            "",
+        )
+        .unwrap_err();
+        match err {
+            Error::GroupNotFound(id) => assert_eq!(id, "grp-001"),
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_collect_partial_groups_partial_failure() {
+        fn make_group(name: &str) -> ContactGroup {
+            ContactGroup {
+                id: name.to_lowercase().replace(' ', "-"),
+                name: name.to_string(),
+                member_uids: vec![],
+                href: None,
+                etag: None,
+            }
+        }
+        let results: Vec<Result<(String, Vec<ContactGroup>)>> = vec![
+            Ok(("/book1".to_string(), vec![make_group("Alpha")])),
+            Err(Error::Server("timeout".to_string())),
+            Ok(("/book3".to_string(), vec![make_group("Beta")])),
+        ];
+        let groups = collect_partial_groups(results);
+        assert_eq!(groups.len(), 2);
+        let names: Vec<&str> = groups.iter().map(|g| g.name.as_str()).collect();
+        assert!(names.contains(&"Alpha"));
+        assert!(names.contains(&"Beta"));
     }
 }

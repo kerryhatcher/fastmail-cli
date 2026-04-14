@@ -60,6 +60,19 @@ pub enum Error {
         server_etag: Option<String>,
     },
 
+    #[error("Group not found: {0}")]
+    GroupNotFound(String),
+
+    #[error("Group conflict for '{id}': sent ETag '{sent_etag}', server has '{server_etag:?}'")]
+    GroupConflict {
+        id: String,
+        sent_etag: String,
+        server_etag: Option<String>,
+    },
+
+    #[error("Ambiguous group name '{0}': multiple groups match. Use group ID instead.")]
+    GroupAmbiguous(String),
+
     #[error("Identity not found for sending")]
     IdentityNotFound,
 
