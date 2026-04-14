@@ -65,7 +65,11 @@ Full details: `.planning/milestones/v1.2-ROADMAP.md`
   3. User can run `contacts groups get <id>` and see the group's name, ID, and resolved member contacts
   4. User can run `contacts groups rename <id> <new-name>` and the rename is reflected in subsequent get/list output
   5. User can run `contacts groups delete <id> --confirm` and the group is removed; running without `--confirm` is rejected; `contacts list` never shows group vCards as malformed contacts
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 18-01-PLAN.md — ContactGroup data model, vCard parse/serialize, CardDAV CRUD methods
+- [ ] 18-02-PLAN.md — CLI surface: contacts groups subcommands
+- [ ] 18-03-PLAN.md — MCP/GraphQL surface: group queries and mutations
 
 ### Phase 19: Group Membership Management
 **Goal**: Users can add and remove contacts from groups, and assign a new contact to a group in a single `contacts create --group` invocation
@@ -100,5 +104,5 @@ Full details: `.planning/milestones/v1.2-ROADMAP.md`
 | 15. Performance | v1.2 | 4/4 | Complete | 2026-04-05 |
 | 16. Integration Test Coverage | v1.2 | 4/4 | Complete | 2026-04-05 |
 | 17. Quality Polish | v1.2 | 3/3 | Complete | 2026-04-05 |
-| 18. Group Data Model, CRUD, and Base Surfaces | v1.3 | 0/? | Not started | - |
+| 18. Group Data Model, CRUD, and Base Surfaces | v1.3 | 0/3 | Not started | - |
 | 19. Group Membership Management | v1.3 | 0/? | Not started | - |
