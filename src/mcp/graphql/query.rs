@@ -184,6 +184,36 @@ impl QueryRoot {
         Ok(masked.into_iter().map(GqlMaskedEmail::from).collect())
     }
 
+    /// List all contact groups with name, member count, and ID.
+    async fn list_groups(&self, ctx: &Context<'_>) -> Result<Vec<GqlContactGroup>> {
+        let app_ctx = ctx.data::<super::AppContext>()?;
+        let carddav = app_ctx.get_carddav().await?;
+        let groups = carddav
+            .list_groups()
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        Ok(groups.into_iter().map(GqlContactGroup::from).collect())
+    }
+
+    /// Get a contact group by ID with resolved member contacts.
+    async fn get_group(
+        &self,
+        ctx: &Context<'_>,
+        #[graphql(desc = "Group ID (UID)")] id: String,
+    ) -> Result<GqlContactGroup> {
+        let app_ctx = ctx.data::<super::AppContext>()?;
+        let carddav = app_ctx.get_carddav().await?;
+        let group = carddav
+            .get_group_by_id(&id)
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        let members = carddav
+            .resolve_group_members(&group)
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        Ok(GqlContactGroup::with_members(group, members))
+    }
+
     /// Search contacts by name, email, or organization. Requires FASTMAIL_APP_PASSWORD.
     async fn contacts(
         &self,

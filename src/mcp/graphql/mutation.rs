@@ -2,6 +2,7 @@
 
 use async_graphql::{Context, Object, Result};
 
+use crate::carddav::{ContactGroup, Uuid};
 use crate::models::EmailAddress;
 use crate::util::parse_addresses;
 use crate::{commands, error::Error};
@@ -256,6 +257,155 @@ impl MutationRoot {
                 message: None,
                 error: Some(error.to_string()),
             }),
+        }
+    }
+
+    /// Create a new empty contact group.
+    async fn create_group(
+        &self,
+        ctx: &Context<'_>,
+        #[graphql(desc = "Group name")] name: String,
+    ) -> Result<GqlGroupMutationResult> {
+        let app_ctx = ctx.data::<super::AppContext>()?;
+        let carddav = app_ctx.get_carddav().await?;
+        let group = ContactGroup {
+            id: Uuid::new_v4().to_string(),
+            name: name.clone(),
+            member_uids: vec![],
+            href: None,
+            etag: None,
+        };
+        let addressbook_href = carddav
+            .default_addressbook_href()
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        let result = carddav
+            .create_group(&addressbook_href, &group)
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        let created = ContactGroup {
+            href: Some(result.href),
+            etag: result.etag,
+            ..group
+        };
+        Ok(GqlGroupMutationResult {
+            success: true,
+            group: Some(GqlContactGroup::from(created)),
+            message: Some(format!("Group '{}' created", name)),
+            error: None,
+        })
+    }
+
+    /// Rename a contact group.
+    async fn rename_group(
+        &self,
+        ctx: &Context<'_>,
+        #[graphql(desc = "Group ID (UID)")] id: String,
+        #[graphql(desc = "New group name")] new_name: String,
+    ) -> Result<GqlGroupMutationResult> {
+        let app_ctx = ctx.data::<super::AppContext>()?;
+        let carddav = app_ctx.get_carddav().await?;
+        let group = carddav
+            .get_group_by_id(&id)
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        let href = group
+            .href
+            .as_deref()
+            .ok_or_else(|| async_graphql::Error::new(format!("Group {} has no href", id)))?;
+        let etag = group
+            .etag
+            .as_deref()
+            .ok_or_else(|| async_graphql::Error::new(format!("Group {} has no etag", id)))?;
+        let new_etag = carddav
+            .rename_group(href, etag, &group, &new_name)
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        let renamed = ContactGroup {
+            name: new_name.clone(),
+            etag: Some(new_etag),
+            ..group
+        };
+        Ok(GqlGroupMutationResult {
+            success: true,
+            group: Some(GqlContactGroup::from(renamed)),
+            message: Some(format!("Group renamed to '{}'", new_name)),
+            error: None,
+        })
+    }
+
+    /// Delete a contact group (members are NOT deleted). Use PREVIEW first to get a confirmation token.
+    async fn delete_group(
+        &self,
+        ctx: &Context<'_>,
+        #[graphql(desc = "PREVIEW to get token, CONFIRM to delete")] action: GroupDeleteAction,
+        #[graphql(desc = "Group ID (UID)")] id: String,
+        #[graphql(desc = "Confirmation token returned by PREVIEW")] confirmation_token: Option<
+            String,
+        >,
+    ) -> Result<GqlGroupDeleteResult> {
+        let app_ctx = ctx.data::<super::AppContext>()?;
+        let token = app_ctx.confirmation_token(&["delete_group", &id]);
+
+        match action {
+            GroupDeleteAction::Preview => {
+                let carddav = app_ctx.get_carddav().await?;
+                let group = carddav
+                    .get_group_by_id(&id)
+                    .await
+                    .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+                Ok(GqlGroupDeleteResult {
+                    success: true,
+                    deleted_id: None,
+                    preview: Some(format!(
+                        "Will delete group '{}' ({}). Members will NOT be deleted.",
+                        group.name, id
+                    )),
+                    confirmation_token: Some(token),
+                    message: None,
+                    error: None,
+                })
+            }
+            GroupDeleteAction::Confirm => {
+                if confirmation_token.as_deref() != Some(&token) {
+                    return Ok(GqlGroupDeleteResult {
+                        success: false,
+                        deleted_id: None,
+                        preview: None,
+                        confirmation_token: None,
+                        message: None,
+                        error: Some(
+                            "Missing or invalid confirmation_token. Use action=PREVIEW first."
+                                .to_string(),
+                        ),
+                    });
+                }
+                let carddav = app_ctx.get_carddav().await?;
+                let group = carddav
+                    .get_group_by_id(&id)
+                    .await
+                    .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+                let href = group
+                    .href
+                    .as_deref()
+                    .ok_or_else(|| async_graphql::Error::new(format!("Group {} has no href", id)))?;
+                let etag = group
+                    .etag
+                    .as_deref()
+                    .ok_or_else(|| async_graphql::Error::new(format!("Group {} has no etag", id)))?;
+                carddav
+                    .delete_group(href, etag, &id)
+                    .await
+                    .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+                Ok(GqlGroupDeleteResult {
+                    success: true,
+                    deleted_id: Some(id),
+                    preview: None,
+                    confirmation_token: None,
+                    message: Some("Group deleted".to_string()),
+                    error: None,
+                })
+            }
         }
     }
 
