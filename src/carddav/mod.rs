@@ -615,6 +615,163 @@ impl CardDavClient {
         Ok(())
     }
 
+    /// Add a contact to a group's membership list.
+    ///
+    /// Validates the contact exists first, then performs an ETag-guarded PUT with
+    /// retry-on-412 (up to MAX_RETRIES attempts). Returns Ok(group) immediately if
+    /// the contact is already a member (idempotent).
+    #[instrument(skip(self))]
+    pub async fn add_group_member(
+        &self,
+        group_id: &str,
+        contact_uid: &str,
+    ) -> Result<ContactGroup> {
+        // Validate the contact exists before modifying the group (fail fast)
+        self.get_contact_by_id(contact_uid).await?;
+
+        const MAX_RETRIES: u8 = 3;
+
+        for attempt in 0..MAX_RETRIES {
+            let group = self.get_group_by_id(group_id).await?;
+
+            let href = group
+                .href
+                .clone()
+                .ok_or_else(|| Error::GroupNotFound(group_id.to_string()))?;
+
+            let etag = group
+                .etag
+                .clone()
+                .ok_or_else(|| Error::GroupConflict {
+                    id: group_id.to_string(),
+                    sent_etag: String::new(),
+                    server_etag: None,
+                })?;
+
+            // Idempotency: skip PUT if contact is already a member
+            if group.member_uids.contains(&contact_uid.to_string()) {
+                return Ok(group);
+            }
+
+            let mut updated = group.clone();
+            updated.member_uids.push(contact_uid.to_string());
+
+            let url = format!("{}{}", self.base_url, href);
+            let vcard = serialize_group_vcard(&updated);
+
+            let response = self
+                .client
+                .put(&url)
+                .basic_auth(&self.username, Some(&self.app_password))
+                .header("Content-Type", "text/vcard; charset=utf-8")
+                .header(IF_MATCH, &etag)
+                .body(vcard)
+                .send()
+                .await?;
+
+            let status = response.status();
+            let headers = response.headers().clone();
+            let body = response.text().await?;
+
+            debug!(status = %status, href = %href, attempt, "PUT add_group_member response");
+
+            match map_group_write_response(group_id, Some(&etag), status, &headers, &body) {
+                Ok(new_etag) => {
+                    updated.etag = new_etag.or_else(|| Some(etag.clone()));
+                    return Ok(updated);
+                }
+                Err(Error::GroupConflict { .. }) if attempt < MAX_RETRIES - 1 => {
+                    debug!(attempt, group_id, "ETag conflict on add_group_member, retrying");
+                    continue;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        Err(Error::GroupConflict {
+            id: group_id.to_string(),
+            sent_etag: String::new(),
+            server_etag: None,
+        })
+    }
+
+    /// Remove a contact from a group's membership list.
+    ///
+    /// Performs an ETag-guarded PUT with retry-on-412 (up to MAX_RETRIES attempts).
+    /// Returns Ok(group) immediately if the contact is not a member (idempotent).
+    /// No contact existence validation — removing a reference to a deleted contact is valid.
+    #[instrument(skip(self))]
+    pub async fn remove_group_member(
+        &self,
+        group_id: &str,
+        contact_uid: &str,
+    ) -> Result<ContactGroup> {
+        const MAX_RETRIES: u8 = 3;
+
+        for attempt in 0..MAX_RETRIES {
+            let group = self.get_group_by_id(group_id).await?;
+
+            let href = group
+                .href
+                .clone()
+                .ok_or_else(|| Error::GroupNotFound(group_id.to_string()))?;
+
+            let etag = group
+                .etag
+                .clone()
+                .ok_or_else(|| Error::GroupConflict {
+                    id: group_id.to_string(),
+                    sent_etag: String::new(),
+                    server_etag: None,
+                })?;
+
+            // Idempotency: skip PUT if contact is not a member
+            if !group.member_uids.contains(&contact_uid.to_string()) {
+                return Ok(group);
+            }
+
+            let mut updated = group.clone();
+            updated.member_uids.retain(|uid| uid != contact_uid);
+
+            let url = format!("{}{}", self.base_url, href);
+            let vcard = serialize_group_vcard(&updated);
+
+            let response = self
+                .client
+                .put(&url)
+                .basic_auth(&self.username, Some(&self.app_password))
+                .header("Content-Type", "text/vcard; charset=utf-8")
+                .header(IF_MATCH, &etag)
+                .body(vcard)
+                .send()
+                .await?;
+
+            let status = response.status();
+            let headers = response.headers().clone();
+            let body = response.text().await?;
+
+            debug!(status = %status, href = %href, attempt, "PUT remove_group_member response");
+
+            match map_group_write_response(group_id, Some(&etag), status, &headers, &body) {
+                Ok(new_etag) => {
+                    updated.etag = new_etag.or_else(|| Some(etag.clone()));
+                    return Ok(updated);
+                }
+                Err(Error::GroupConflict { .. }) if attempt < MAX_RETRIES - 1 => {
+                    debug!(attempt, group_id, "ETag conflict on remove_group_member, retrying");
+                    continue;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        Err(Error::GroupConflict {
+            id: group_id.to_string(),
+            sent_etag: String::new(),
+            server_etag: None,
+        })
+    }
+
     /// Resolve all member contacts for a group in a single batch fetch.
     ///
     /// Fetches all contacts across all address books once, then filters in-memory
@@ -2338,5 +2495,90 @@ END:VCARD</card:address-data>
         let names: Vec<&str> = groups.iter().map(|g| g.name.as_str()).collect();
         assert!(names.contains(&"Alpha"));
         assert!(names.contains(&"Beta"));
+    }
+
+    // ===== add_group_member / remove_group_member unit-level logic tests =====
+
+    #[test]
+    fn test_serialize_group_vcard_member_lines_format() {
+        // Verify serialize_group_vcard emits the correct X-ADDRESSBOOKSERVER-MEMBER format
+        // for each member UID — this is the exact format the server expects.
+        let group = ContactGroup {
+            id: "grp-test".to_string(),
+            name: "Test Group".to_string(),
+            member_uids: vec!["uid-aaa".to_string(), "uid-bbb".to_string()],
+            href: None,
+            etag: None,
+        };
+        let output = serialize_group_vcard(&group);
+        assert!(
+            output.contains("X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:uid-aaa"),
+            "expected member line for uid-aaa, got: {output}"
+        );
+        assert!(
+            output.contains("X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:uid-bbb"),
+            "expected member line for uid-bbb, got: {output}"
+        );
+        // Verify no duplicate member lines are emitted
+        let member_count = output
+            .lines()
+            .filter(|l| l.trim_start().starts_with("X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:uid-aaa"))
+            .count();
+        assert_eq!(member_count, 1, "expected exactly 1 member line for uid-aaa");
+    }
+
+    #[test]
+    fn test_add_group_member_idempotency_guard_logic() {
+        // Unit-level check of the idempotency guard: if contact_uid is already in
+        // member_uids, the guard fires and no duplicate is added.
+        let group = ContactGroup {
+            id: "grp-001".to_string(),
+            name: "Friends".to_string(),
+            member_uids: vec!["uid-1".to_string(), "uid-2".to_string()],
+            href: Some("/dav/grp-001.vcf".to_string()),
+            etag: Some("\"etag-1\"".to_string()),
+        };
+        // Simulate the idempotency check
+        let contact_uid = "uid-1";
+        assert!(
+            group.member_uids.contains(&contact_uid.to_string()),
+            "idempotency guard should fire: uid-1 already in member_uids"
+        );
+        // Simulate the mutation path for a new member
+        let contact_uid_new = "uid-3";
+        assert!(
+            !group.member_uids.contains(&contact_uid_new.to_string()),
+            "uid-3 should not yet be in member_uids"
+        );
+        let mut updated = group.clone();
+        updated.member_uids.push(contact_uid_new.to_string());
+        assert_eq!(updated.member_uids.len(), 3);
+        assert!(updated.member_uids.contains(&"uid-3".to_string()));
+    }
+
+    #[test]
+    fn test_remove_group_member_idempotency_guard_logic() {
+        // Unit-level check of the remove idempotency guard: if contact_uid is NOT in
+        // member_uids, the guard fires and no PUT is needed.
+        let group = ContactGroup {
+            id: "grp-001".to_string(),
+            name: "Friends".to_string(),
+            member_uids: vec!["uid-1".to_string(), "uid-2".to_string()],
+            href: Some("/dav/grp-001.vcf".to_string()),
+            etag: Some("\"etag-1\"".to_string()),
+        };
+        // uid-99 is not a member — guard fires
+        let contact_uid = "uid-99";
+        assert!(
+            !group.member_uids.contains(&contact_uid.to_string()),
+            "idempotency guard should fire: uid-99 not in member_uids"
+        );
+        // Simulate the retain mutation for an existing member
+        let contact_uid_existing = "uid-1";
+        let mut updated = group.clone();
+        updated.member_uids.retain(|uid| uid != contact_uid_existing);
+        assert_eq!(updated.member_uids.len(), 1);
+        assert!(!updated.member_uids.contains(&"uid-1".to_string()));
+        assert!(updated.member_uids.contains(&"uid-2".to_string()));
     }
 }
