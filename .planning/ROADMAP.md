@@ -51,7 +51,7 @@ Full details: `.planning/milestones/v1.2-ROADMAP.md`
 **Milestone Goal:** Users can manage contact groups (create, list, get, rename, delete), add/remove contacts from groups, and assign a group at contact creation time — via both CLI and MCP/GraphQL.
 
 - [x] **Phase 18: Group Data Model, CRUD, and Base Surfaces** - ContactGroup struct, vCard 3.0 X-ADDRESSBOOKSERVER serialization, parser KIND-filter, and full group CRUD via CLI and MCP (completed 2026-04-14)
-- [ ] **Phase 19: Group Membership Management** - ETag-guarded add/remove member with retry, CLI membership commands, and --group flag on contacts create with two-step atomic sequencing
+- [x] **Phase 19: Group Membership Management** - ETag-guarded add/remove member with retry, CLI membership commands, and --group flag on contacts create with two-step atomic sequencing (completed 2026-04-14)
 
 ## Phase Details
 
@@ -81,11 +81,11 @@ Plans:
   3. Concurrent `add-member` calls against the same group produce a correct final member list (no silently dropped members due to ETag race)
   4. User can run `contacts create --group <group-id> ...` and the new contact is created and added to the group in one command; partial failure (contact created but group update fails) is reported clearly
   5. AI agent can call `addContactGroupMember` and `removeContactGroupMember` mutations and receive the updated ContactGroup with resolved members
-**Plans:** 3 plans
+**Plans:** 3/3 plans complete
 Plans:
-- [ ] 19-01-PLAN.md — CardDAV transport: add_group_member and remove_group_member with ETag retry
-- [ ] 19-02-PLAN.md — CLI surface: add-member, remove-member commands and --group flag on create
-- [ ] 19-03-PLAN.md — MCP/GraphQL surface: addGroupMember and removeGroupMember mutations
+- [x] 19-01-PLAN.md — CardDAV transport: add_group_member and remove_group_member with ETag retry
+- [x] 19-02-PLAN.md — CLI surface: add-member, remove-member commands and --group flag on create
+- [x] 19-03-PLAN.md — MCP/GraphQL surface: addGroupMember and removeGroupMember mutations
 
 ## Progress
 
@@ -109,4 +109,4 @@ Plans:
 | 16. Integration Test Coverage | v1.2 | 4/4 | Complete | 2026-04-05 |
 | 17. Quality Polish | v1.2 | 3/3 | Complete | 2026-04-05 |
 | 18. Group Data Model, CRUD, and Base Surfaces | v1.3 | 3/3 | Complete    | 2026-04-14 |
-| 19. Group Membership Management | v1.3 | 0/3 | Not started | - |
+| 19. Group Membership Management | v1.3 | 3/3 | Complete    | 2026-04-14 |
