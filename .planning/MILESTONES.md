@@ -1,5 +1,17 @@
 # Milestones
 
+## v1.3 Contact Groups (Shipped: 2026-04-14)
+
+**Phases completed:** 2 phases, 6 plans, 1 tasks
+
+**Key accomplishments:**
+
+- 1. [Rule 1 - Bug] Removed invalid `#[graphql(desc = ...)]` method-level attributes
+- Task 1 — `src/main.rs`:
+- `addGroupMember` and `removeGroupMember` mutations added to MCP GraphQL schema, returning full GqlContactGroup with resolved member contacts via ETag-guarded CardDav transport
+
+---
+
 ## v1.2 Hardening & Quality (Shipped: 2026-04-05)
 
 **Phases completed:** 6 phases, 23 plans, 29 tasks

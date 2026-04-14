@@ -10,12 +10,11 @@ Users can manage Fastmail data without leaving the terminal or AI assistant, wit
 
 ## Current State
 
-- Shipped milestone: `v1.2` on 2026-04-05
-- Delivered: Hardening & Quality — 32 in-scope codebase-review findings closed across safety, security, MCP refactor, performance, integration test coverage, and polish
-- Previous: `v1.1` (2026-04-04) — CalDAV calendar and event management; `v1.0` (2026-04-03) — CardDAV contact CRUD
-- All phases complete: `v1.3` Contact Groups — Phase 18 (group CRUD + CLI + MCP surfaces) + Phase 19 (membership management + --group flag) delivered
+- Shipped milestone: `v1.3` on 2026-04-14
+- Delivered: Contact Groups — group CRUD, membership management, --group flag on create, CLI + MCP surfaces
+- Previous: `v1.2` (2026-04-05) — Hardening & Quality; `v1.1` (2026-04-04) — CalDAV calendars; `v1.0` (2026-04-03) — CardDAV contact CRUD
 - Codebase: 206 tests passing, zero clippy warnings
-- Known deferred: live-account integration validation for SIGTERM, OnceCell reuse, and CalDAV UID REPORT (Cyrus IMAP quirks)
+- Known deferred: live-account integration validation for SIGTERM, OnceCell reuse, CalDAV UID REPORT (Cyrus IMAP quirks), 4 live-server group verification items
 
 ## Requirements
 
@@ -39,9 +38,15 @@ Users can manage Fastmail data without leaving the terminal or AI assistant, wit
 - ✓ MCP GraphQL calendar/event queries and mutations for AI-agent workflows — v1.1
 - ✓ Live Fastmail validation of calendar and event CRUD behavior — v1.1
 
+- ✓ Contact group CRUD (list, create, get, rename, delete) via CardDAV with X-ADDRESSBOOKSERVER vCard 3.0 extensions — v1.3
+- ✓ Group membership add/remove with ETag-guarded retry-on-412 concurrent safety — v1.3
+- ✓ CLI `contacts groups` subcommands with ID-or-name resolution and --confirm delete guard — v1.3
+- ✓ `contacts create --group` convenience flag with partial-failure reporting — v1.3
+- ✓ MCP/GraphQL group queries (listGroups, getGroup) and mutations (create, rename, delete, addMember, removeMember) — v1.3
+
 ### Active
 
-(Defined during v1.3 requirements step — see REQUIREMENTS.md)
+(None — define during next milestone requirements step)
 
 ### Out of Scope
 
