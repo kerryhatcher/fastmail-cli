@@ -375,6 +375,10 @@ enum ContactsCommands {
         /// Notes
         #[arg(long)]
         notes: Option<String>,
+
+        /// Assign to group at creation (group ID or name)
+        #[arg(long)]
+        group: Option<String>,
     },
 
     /// Update an existing contact
@@ -468,6 +472,22 @@ enum GroupsCommands {
         /// Alias for --confirm
         #[arg(short = 'y', long)]
         yes: bool,
+    },
+
+    /// Add a contact to a group
+    AddMember {
+        /// Group ID (UID) or name
+        group_id: String,
+        /// Contact ID (UID)
+        contact_id: String,
+    },
+
+    /// Remove a contact from a group
+    RemoveMember {
+        /// Group ID (UID) or name
+        group_id: String,
+        /// Contact ID (UID)
+        contact_id: String,
     },
 }
 
@@ -904,16 +924,20 @@ async fn main() -> anyhow::Result<()> {
                 title,
                 address,
                 notes,
+                group,
             } => {
-                commands::create_contact(commands::ContactInput {
-                    name,
-                    email,
-                    phone,
-                    organization,
-                    title,
-                    address,
-                    notes,
-                })
+                commands::create_contact(
+                    commands::ContactInput {
+                        name,
+                        email,
+                        phone,
+                        organization,
+                        title,
+                        address,
+                        notes,
+                    },
+                    group.as_deref(),
+                )
                 .await
             }
             ContactsCommands::Update {
@@ -967,6 +991,12 @@ async fn main() -> anyhow::Result<()> {
                         anyhow::bail!("confirmation required");
                     }
                     commands::delete_group(&id).await
+                }
+                GroupsCommands::AddMember { group_id, contact_id } => {
+                    commands::add_group_member(&group_id, &contact_id).await
+                }
+                GroupsCommands::RemoveMember { group_id, contact_id } => {
+                    commands::remove_group_member(&group_id, &contact_id).await
                 }
             },
         },
