@@ -166,15 +166,60 @@ pub async fn search_contacts(query: &str) -> AnyResult<()> {
     Ok(())
 }
 
-pub async fn create_contact(input: ContactInput) -> AnyResult<()> {
+pub async fn create_contact(input: ContactInput, group: Option<&str>) -> AnyResult<()> {
     let contact = create_contact_record(input).await?;
-    Output {
-        success: true,
-        data: Some(contact),
-        error: None,
-        message: Some("Contact created".to_string()),
+    match group {
+        None => {
+            Output {
+                success: true,
+                data: Some(serde_json::json!(contact)),
+                error: None,
+                message: Some("Contact created".to_string()),
+            }
+            .print();
+        }
+        Some(gid) => {
+            let client = contact_client()?;
+            match resolve_group(&client, gid).await {
+                Err(e) => {
+                    Output {
+                        success: true,
+                        data: Some(serde_json::json!(contact)),
+                        error: Some(format!(
+                            "Contact created (ID: {}) but group not found: {}. Run `contacts groups add-member {} {}` to retry.",
+                            contact.id, e, gid, contact.id
+                        )),
+                        message: None,
+                    }
+                    .print();
+                }
+                Ok(group_obj) => {
+                    match client.add_group_member(&group_obj.id, &contact.id).await {
+                        Ok(_) => {
+                            Output::success(serde_json::json!({
+                                "contact": contact,
+                                "group_id": group_obj.id,
+                                "message": format!("Contact created and added to group {}", group_obj.name),
+                            }))
+                            .print();
+                        }
+                        Err(e) => {
+                            Output {
+                                success: true,
+                                data: Some(serde_json::json!(contact)),
+                                error: Some(format!(
+                                    "Contact created (ID: {}) but group add failed: {}. Run `contacts groups add-member {} {}` to retry.",
+                                    contact.id, e, gid, contact.id
+                                )),
+                                message: None,
+                            }
+                            .print();
+                        }
+                    }
+                }
+            }
+        }
     }
-    .print();
     Ok(())
 }
 
@@ -315,6 +360,42 @@ pub async fn delete_group(id_or_name: &str) -> AnyResult<()> {
         message: Some(format!("Group {} deleted", group.id)),
     }
     .print();
+    Ok(())
+}
+
+/// Add a contact to a group by group ID/name and contact ID
+pub async fn add_group_member(group_id_or_name: &str, contact_id: &str) -> AnyResult<()> {
+    let client = contact_client()?;
+    let group = resolve_group(&client, group_id_or_name).await?;
+    let updated = client.add_group_member(&group.id, contact_id).await?;
+    let members = client.resolve_group_members(&updated).await?;
+    let data = serde_json::json!({
+        "id": updated.id,
+        "name": updated.name,
+        "href": updated.href,
+        "etag": updated.etag,
+        "member_count": updated.member_uids.len(),
+        "members": members,
+    });
+    Output::success(data).print();
+    Ok(())
+}
+
+/// Remove a contact from a group by group ID/name and contact ID
+pub async fn remove_group_member(group_id_or_name: &str, contact_id: &str) -> AnyResult<()> {
+    let client = contact_client()?;
+    let group = resolve_group(&client, group_id_or_name).await?;
+    let updated = client.remove_group_member(&group.id, contact_id).await?;
+    let members = client.resolve_group_members(&updated).await?;
+    let data = serde_json::json!({
+        "id": updated.id,
+        "name": updated.name,
+        "href": updated.href,
+        "etag": updated.etag,
+        "member_count": updated.member_uids.len(),
+        "members": members,
+    });
+    Output::success(data).print();
     Ok(())
 }
 
