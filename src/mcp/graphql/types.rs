@@ -5,7 +5,7 @@ use async_graphql::{Context, Enum, InputObject, Object, Result, SimpleObject};
 use crate::caldav::{
     Calendar, CalendarEvent, EventAttendee, EventDateTime, EventRecurrence, EventReminder,
 };
-use crate::carddav::{Contact, ContactEmail, ContactPhone};
+use crate::carddav::{Contact, ContactEmail, ContactGroup, ContactPhone};
 use crate::models::{Email, EmailAddress, Identity, Mailbox, MaskedEmail};
 
 // ============ Output Types ============
@@ -476,6 +476,52 @@ impl From<Contact> for GqlContact {
     }
 }
 
+/// Contact group (vCard KIND:group / X-ADDRESSBOOKSERVER-KIND:group)
+#[derive(SimpleObject)]
+#[graphql(name = "ContactGroup")]
+pub struct GqlContactGroup {
+    /// Group unique identifier (vCard UID)
+    pub id: String,
+    /// Group display name (vCard FN)
+    pub name: String,
+    /// Number of members in the group
+    pub member_count: i32,
+    /// Resolved member contacts (populated by get_group, empty in list_groups)
+    pub members: Vec<GqlContact>,
+    /// Server-assigned resource URL
+    pub href: Option<String>,
+    /// HTTP ETag for concurrency control
+    pub etag: Option<String>,
+}
+
+impl From<ContactGroup> for GqlContactGroup {
+    fn from(g: ContactGroup) -> Self {
+        Self {
+            member_count: g.member_uids.len() as i32,
+            id: g.id,
+            name: g.name,
+            members: vec![],
+            href: g.href,
+            etag: g.etag,
+        }
+    }
+}
+
+impl GqlContactGroup {
+    /// Construct a GqlContactGroup with resolved member contacts.
+    pub fn with_members(group: ContactGroup, contacts: Vec<Contact>) -> Self {
+        let member_count = group.member_uids.len() as i32;
+        Self {
+            id: group.id,
+            name: group.name,
+            member_count,
+            members: contacts.into_iter().map(GqlContact::from).collect(),
+            href: group.href,
+            etag: group.etag,
+        }
+    }
+}
+
 #[derive(SimpleObject)]
 #[graphql(name = "Calendar")]
 pub struct GqlCalendar {
@@ -720,6 +766,14 @@ pub enum EventDeleteAction {
     Confirm,
 }
 
+#[derive(Enum, Copy, Clone, Eq, PartialEq)]
+pub enum GroupDeleteAction {
+    /// Preview the deletion and receive a confirmation token
+    Preview,
+    /// Confirm the deletion with a valid confirmation token
+    Confirm,
+}
+
 // ============ Result Types ============
 
 #[derive(SimpleObject)]
@@ -757,6 +811,26 @@ pub struct GqlContactMutationResult {
 #[derive(SimpleObject)]
 #[graphql(name = "ContactDeleteResult")]
 pub struct GqlContactDeleteResult {
+    pub success: bool,
+    pub deleted_id: Option<String>,
+    pub preview: Option<String>,
+    pub confirmation_token: Option<String>,
+    pub message: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(SimpleObject)]
+#[graphql(name = "GroupMutationResult")]
+pub struct GqlGroupMutationResult {
+    pub success: bool,
+    pub group: Option<GqlContactGroup>,
+    pub message: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(SimpleObject)]
+#[graphql(name = "GroupDeleteResult")]
+pub struct GqlGroupDeleteResult {
     pub success: bool,
     pub deleted_id: Option<String>,
     pub preview: Option<String>,
@@ -887,5 +961,41 @@ mod tests {
         assert_eq!(g.to.len(), 0);
         let _h = Arc::clone(&g.to);
         assert!(Arc::strong_count(&g.to) >= 2);
+    }
+
+    #[test]
+    fn gql_contact_group_from_maps_all_fields() {
+        use crate::carddav::ContactGroup;
+        let group = ContactGroup {
+            id: "uid-1".to_string(),
+            name: "Test Group".to_string(),
+            member_uids: vec!["uid-a".to_string(), "uid-b".to_string()],
+            href: Some("/addressbooks/user/default/group-1.vcf".to_string()),
+            etag: Some("\"abc123\"".to_string()),
+        };
+        let gql: GqlContactGroup = GqlContactGroup::from(group);
+        assert_eq!(gql.id, "uid-1");
+        assert_eq!(gql.name, "Test Group");
+        assert_eq!(gql.member_count, 2);
+        assert!(gql.members.is_empty());
+        assert_eq!(gql.href.as_deref(), Some("/addressbooks/user/default/group-1.vcf"));
+        assert_eq!(gql.etag.as_deref(), Some("\"abc123\""));
+    }
+
+    #[test]
+    fn gql_contact_group_from_empty_member_uids() {
+        use crate::carddav::ContactGroup;
+        let group = ContactGroup {
+            id: "uid-empty".to_string(),
+            name: "Empty Group".to_string(),
+            member_uids: vec![],
+            href: None,
+            etag: None,
+        };
+        let gql: GqlContactGroup = GqlContactGroup::from(group);
+        assert_eq!(gql.member_count, 0);
+        assert!(gql.members.is_empty());
+        assert!(gql.href.is_none());
+        assert!(gql.etag.is_none());
     }
 }
