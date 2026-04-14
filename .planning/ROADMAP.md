@@ -5,6 +5,7 @@
 - ✅ **v1.0 Contact CRUD** — Phases 1-4 (shipped 2026-04-03)
 - ✅ **v1.1 Calendar Access and Management** — Phases 5-11 (shipped 2026-04-04)
 - ✅ **v1.2 Hardening & Quality** — Phases 12-17 (shipped 2026-04-05)
+- 🚧 **v1.3 Contact Groups** — Phases 18-19 (in progress)
 
 ## Phases
 
@@ -45,6 +46,39 @@ Full details: `.planning/milestones/v1.2-ROADMAP.md`
 
 </details>
 
+### 🚧 v1.3 Contact Groups (In Progress)
+
+**Milestone Goal:** Users can manage contact groups (create, list, get, rename, delete), add/remove contacts from groups, and assign a group at contact creation time — via both CLI and MCP/GraphQL.
+
+- [ ] **Phase 18: Group Data Model, CRUD, and Base Surfaces** - ContactGroup struct, vCard 3.0 X-ADDRESSBOOKSERVER serialization, parser KIND-filter, and full group CRUD via CLI and MCP
+- [ ] **Phase 19: Group Membership Management** - ETag-guarded add/remove member with retry, CLI membership commands, and --group flag on contacts create with two-step atomic sequencing
+
+## Phase Details
+
+### Phase 18: Group Data Model, CRUD, and Base Surfaces
+**Goal**: Users can create, list, inspect, rename, and delete contact groups — and existing `contacts list` is unaffected by group vCards
+**Depends on**: Phase 17 (v1.2 complete)
+**Requirements**: GRP-01, GRP-02, GRP-03, GRP-04, GRP-05, CLI-01, CLI-03, MCP-01, MCP-02
+**Success Criteria** (what must be TRUE):
+  1. User can run `contacts groups list` and see all contact groups with name, member count, and group ID
+  2. User can run `contacts groups create <name>` and the new empty group appears in subsequent list output
+  3. User can run `contacts groups get <id>` and see the group's name, ID, and resolved member contacts
+  4. User can run `contacts groups rename <id> <new-name>` and the rename is reflected in subsequent get/list output
+  5. User can run `contacts groups delete <id> --confirm` and the group is removed; running without `--confirm` is rejected; `contacts list` never shows group vCards as malformed contacts
+**Plans**: TBD
+
+### Phase 19: Group Membership Management
+**Goal**: Users can add and remove contacts from groups, and assign a new contact to a group in a single `contacts create --group` invocation
+**Depends on**: Phase 18
+**Requirements**: MBR-01, MBR-02, MBR-03, CLI-02, CLI-04, MCP-03
+**Success Criteria** (what must be TRUE):
+  1. User can run `contacts groups add-member <group-id> <contact-id>` and the contact appears in subsequent `contacts groups get` output
+  2. User can run `contacts groups remove-member <group-id> <contact-id>` and the contact is absent from subsequent `contacts groups get` output
+  3. Concurrent `add-member` calls against the same group produce a correct final member list (no silently dropped members due to ETag race)
+  4. User can run `contacts create --group <group-id> ...` and the new contact is created and added to the group in one command; partial failure (contact created but group update fails) is reported clearly
+  5. AI agent can call `addContactGroupMember` and `removeContactGroupMember` mutations and receive the updated ContactGroup with resolved members
+**Plans**: TBD
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -60,9 +94,11 @@ Full details: `.planning/milestones/v1.2-ROADMAP.md`
 | 9. MCP Calendar Surface & Live Validation | v1.1 | 1/1 | Complete | 2026-04-03 |
 | 10. Explicit Range Contract Closure | v1.1 | 1/1 | Complete | 2026-04-03 |
 | 11. CLI Attendee Clearing Parity | v1.1 | 1/1 | Complete | 2026-04-03 |
-| 12. Foundation Safety | v1.2 | 4/4 | Complete   | 2026-04-04 |
-| 13. Security Hardening | v1.2 | 4/4 | Complete   | 2026-04-04 |
-| 14. MCP Layer Refactor | v1.2 | 4/4 | Complete   | 2026-04-04 |
-| 15. Performance | v1.2 | 4/4 | Complete   | 2026-04-05 |
-| 16. Integration Test Coverage | v1.2 | 4/4 | Complete   | 2026-04-05 |
-| 17. Quality Polish | v1.2 | 3/3 | Complete   | 2026-04-05 |
+| 12. Foundation Safety | v1.2 | 4/4 | Complete | 2026-04-04 |
+| 13. Security Hardening | v1.2 | 4/4 | Complete | 2026-04-04 |
+| 14. MCP Layer Refactor | v1.2 | 4/4 | Complete | 2026-04-04 |
+| 15. Performance | v1.2 | 4/4 | Complete | 2026-04-05 |
+| 16. Integration Test Coverage | v1.2 | 4/4 | Complete | 2026-04-05 |
+| 17. Quality Polish | v1.2 | 3/3 | Complete | 2026-04-05 |
+| 18. Group Data Model, CRUD, and Base Surfaces | v1.3 | 0/? | Not started | - |
+| 19. Group Membership Management | v1.3 | 0/? | Not started | - |

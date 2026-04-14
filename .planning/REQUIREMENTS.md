@@ -64,27 +64,27 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| GRP-01 | — | Pending |
-| GRP-02 | — | Pending |
-| GRP-03 | — | Pending |
-| GRP-04 | — | Pending |
-| GRP-05 | — | Pending |
-| MBR-01 | — | Pending |
-| MBR-02 | — | Pending |
-| MBR-03 | — | Pending |
-| CLI-01 | — | Pending |
-| CLI-02 | — | Pending |
-| CLI-03 | — | Pending |
-| CLI-04 | — | Pending |
-| MCP-01 | — | Pending |
-| MCP-02 | — | Pending |
-| MCP-03 | — | Pending |
+| GRP-01 | Phase 18 | Pending |
+| GRP-02 | Phase 18 | Pending |
+| GRP-03 | Phase 18 | Pending |
+| GRP-04 | Phase 18 | Pending |
+| GRP-05 | Phase 18 | Pending |
+| MBR-01 | Phase 19 | Pending |
+| MBR-02 | Phase 19 | Pending |
+| MBR-03 | Phase 19 | Pending |
+| CLI-01 | Phase 18 | Pending |
+| CLI-02 | Phase 19 | Pending |
+| CLI-03 | Phase 18 | Pending |
+| CLI-04 | Phase 19 | Pending |
+| MCP-01 | Phase 18 | Pending |
+| MCP-02 | Phase 18 | Pending |
+| MCP-03 | Phase 19 | Pending |
 
 **Coverage:**
 - v1.3 requirements: 15 total
-- Mapped to phases: 0
-- Unmapped: 15 ⚠️
+- Mapped to phases: 15
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-04-13*
-*Last updated: 2026-04-13 after initial definition*
+*Last updated: 2026-04-13 — traceability complete after roadmap creation*
