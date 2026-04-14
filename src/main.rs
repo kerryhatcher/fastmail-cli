@@ -424,6 +424,51 @@ enum ContactsCommands {
         #[arg(short = 'y', long)]
         yes: bool,
     },
+
+    /// Manage contact groups
+    #[command(subcommand)]
+    Groups(GroupsCommands),
+}
+
+#[derive(Subcommand)]
+enum GroupsCommands {
+    /// List all contact groups
+    List,
+
+    /// Create a new empty contact group
+    Create {
+        /// Group name
+        name: String,
+    },
+
+    /// Get group details including resolved member contacts
+    Get {
+        /// Group ID (UID) or name
+        id: String,
+    },
+
+    /// Rename a contact group
+    Rename {
+        /// Group ID (UID) or name
+        id: String,
+
+        /// New group name
+        new_name: String,
+    },
+
+    /// Delete a contact group (members are NOT deleted)
+    Delete {
+        /// Group ID (UID) or name
+        id: String,
+
+        /// Confirm deletion
+        #[arg(long)]
+        confirm: bool,
+
+        /// Alias for --confirm
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -906,6 +951,24 @@ async fn main() -> anyhow::Result<()> {
                 }
                 commands::delete_contact(&contact_id).await
             }
+            ContactsCommands::Groups(cmd) => match cmd {
+                GroupsCommands::List => commands::list_groups().await,
+                GroupsCommands::Create { name } => commands::create_group(&name).await,
+                GroupsCommands::Get { id } => commands::get_group(&id).await,
+                GroupsCommands::Rename { id, new_name } => {
+                    commands::rename_group(&id, &new_name).await
+                }
+                GroupsCommands::Delete { id, confirm, yes } => {
+                    if !(confirm || yes) {
+                        Output::<()>::error(
+                            "Confirmation required: pass --confirm or -y to delete group",
+                        )
+                        .print();
+                        anyhow::bail!("confirmation required");
+                    }
+                    commands::delete_group(&id).await
+                }
+            },
         },
 
         Commands::Calendars(cmd) => match cmd {
@@ -1129,6 +1192,139 @@ mod tests {
         match result {
             Ok(_) => panic!("expected argument conflict"),
             Err(error) => assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict),
+        }
+    }
+
+    #[test]
+    fn cli_parses_contacts_groups_list() {
+        let cli = Cli::try_parse_from(["fastmail-cli", "contacts", "groups", "list"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::Contacts(ContactsCommands::Groups(GroupsCommands::List))
+        ));
+    }
+
+    #[test]
+    fn cli_parses_contacts_groups_create() {
+        let cli =
+            Cli::try_parse_from(["fastmail-cli", "contacts", "groups", "create", "Family"])
+                .unwrap();
+        match cli.command {
+            Commands::Contacts(ContactsCommands::Groups(GroupsCommands::Create { name })) => {
+                assert_eq!(name, "Family");
+            }
+            _ => panic!("expected contacts groups create"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_contacts_groups_get() {
+        let cli =
+            Cli::try_parse_from(["fastmail-cli", "contacts", "groups", "get", "abc-123"])
+                .unwrap();
+        match cli.command {
+            Commands::Contacts(ContactsCommands::Groups(GroupsCommands::Get { id })) => {
+                assert_eq!(id, "abc-123");
+            }
+            _ => panic!("expected contacts groups get"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_contacts_groups_rename() {
+        let cli = Cli::try_parse_from([
+            "fastmail-cli",
+            "contacts",
+            "groups",
+            "rename",
+            "abc-123",
+            "New Name",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Contacts(ContactsCommands::Groups(GroupsCommands::Rename {
+                id,
+                new_name,
+            })) => {
+                assert_eq!(id, "abc-123");
+                assert_eq!(new_name, "New Name");
+            }
+            _ => panic!("expected contacts groups rename"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_contacts_groups_delete_with_confirm() {
+        let cli = Cli::try_parse_from([
+            "fastmail-cli",
+            "contacts",
+            "groups",
+            "delete",
+            "abc-123",
+            "--confirm",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Contacts(ContactsCommands::Groups(GroupsCommands::Delete {
+                id,
+                confirm,
+                yes,
+            })) => {
+                assert_eq!(id, "abc-123");
+                assert!(confirm);
+                assert!(!yes);
+            }
+            _ => panic!("expected contacts groups delete"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_contacts_groups_delete_with_yes_flag() {
+        let cli = Cli::try_parse_from([
+            "fastmail-cli",
+            "contacts",
+            "groups",
+            "delete",
+            "abc-123",
+            "-y",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Contacts(ContactsCommands::Groups(GroupsCommands::Delete {
+                id,
+                confirm,
+                yes,
+            })) => {
+                assert_eq!(id, "abc-123");
+                assert!(!confirm);
+                assert!(yes);
+            }
+            _ => panic!("expected contacts groups delete"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_contacts_groups_delete_without_confirm_has_no_flags() {
+        // Clap accepts the parse; the application logic rejects it at runtime.
+        let cli = Cli::try_parse_from([
+            "fastmail-cli",
+            "contacts",
+            "groups",
+            "delete",
+            "abc-123",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Contacts(ContactsCommands::Groups(GroupsCommands::Delete {
+                id,
+                confirm,
+                yes,
+            })) => {
+                assert_eq!(id, "abc-123");
+                assert!(!confirm);
+                assert!(!yes);
+            }
+            _ => panic!("expected contacts groups delete"),
         }
     }
 }

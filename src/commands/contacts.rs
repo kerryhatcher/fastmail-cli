@@ -1,7 +1,7 @@
 use anyhow::Result as AnyResult;
 
 use crate::carddav::{
-    CardDavClient, Contact, ContactCreateResult, ContactEmail, ContactPhone, Uuid,
+    CardDavClient, Contact, ContactCreateResult, ContactEmail, ContactGroup, ContactPhone, Uuid,
 };
 use crate::config::Config;
 use crate::models::Output;
@@ -197,6 +197,122 @@ pub async fn delete_contact(contact_id: &str) -> AnyResult<()> {
         data: None,
         error: None,
         message: Some(format!("Contact {} deleted", contact_id)),
+    }
+    .print();
+    Ok(())
+}
+
+/// Resolve a group by ID first, then by name if ID lookup returns GroupNotFound.
+async fn resolve_group(
+    client: &CardDavClient,
+    id_or_name: &str,
+) -> crate::error::Result<ContactGroup> {
+    match client.get_group_by_id(id_or_name).await {
+        Ok(group) => return Ok(group),
+        Err(crate::error::Error::GroupNotFound(_)) => {}
+        Err(e) => return Err(e),
+    }
+    client.get_group_by_name(id_or_name).await
+}
+
+/// List all contact groups across all address books
+pub async fn list_groups() -> AnyResult<()> {
+    let client = contact_client()?;
+    let groups = client.list_groups().await?;
+    Output::success(groups).print();
+    Ok(())
+}
+
+/// Create a new empty contact group
+pub async fn create_group(name: &str) -> AnyResult<()> {
+    let client = contact_client()?;
+    let mut group = ContactGroup {
+        id: Uuid::new_v4().to_string(),
+        name: name.to_string(),
+        member_uids: vec![],
+        href: None,
+        etag: None,
+    };
+    let addressbook_href = client.default_addressbook_href().await?;
+    let ContactCreateResult { href, etag } = client.create_group(&addressbook_href, &group).await?;
+    group.href = Some(href);
+    group.etag = etag;
+    Output {
+        success: true,
+        data: Some(group),
+        error: None,
+        message: Some("Group created".to_string()),
+    }
+    .print();
+    Ok(())
+}
+
+/// Get a contact group by ID or name, with resolved member contacts
+pub async fn get_group(id_or_name: &str) -> AnyResult<()> {
+    let client = contact_client()?;
+    let group = resolve_group(&client, id_or_name).await?;
+    let members = client.resolve_group_members(&group).await?;
+    let data = serde_json::json!({
+        "id": group.id,
+        "name": group.name,
+        "href": group.href,
+        "etag": group.etag,
+        "member_count": group.member_uids.len(),
+        "members": members,
+    });
+    Output::success(data).print();
+    Ok(())
+}
+
+/// Rename a contact group
+pub async fn rename_group(id_or_name: &str, new_name: &str) -> AnyResult<()> {
+    let client = contact_client()?;
+    let group = resolve_group(&client, id_or_name).await?;
+    let href = group
+        .href
+        .clone()
+        .ok_or_else(|| crate::error::Error::GroupNotFound(id_or_name.to_string()))?;
+    let etag = group
+        .etag
+        .clone()
+        .ok_or_else(|| crate::error::Error::GroupConflict {
+            id: id_or_name.to_string(),
+            sent_etag: String::new(),
+            server_etag: None,
+        })?;
+    let new_etag = client.rename_group(&href, &etag, &group, new_name).await?;
+    Output::<()> {
+        success: true,
+        data: None,
+        error: None,
+        message: Some(format!("Group {} renamed to {}: etag={}", group.id, new_name, new_etag)),
+    }
+    .print();
+    Ok(())
+}
+
+/// Delete a contact group (members are NOT deleted)
+pub async fn delete_group(id_or_name: &str) -> AnyResult<()> {
+    let client = contact_client()?;
+    let group = resolve_group(&client, id_or_name).await?;
+    let href = group
+        .href
+        .clone()
+        .ok_or_else(|| crate::error::Error::GroupNotFound(id_or_name.to_string()))?;
+    let etag = group
+        .etag
+        .clone()
+        .ok_or_else(|| crate::error::Error::GroupConflict {
+            id: id_or_name.to_string(),
+            sent_etag: String::new(),
+            server_etag: None,
+        })?;
+    client.delete_group(&href, &etag, &group.id).await?;
+    Output::<()> {
+        success: true,
+        data: None,
+        error: None,
+        message: Some(format!("Group {} deleted", group.id)),
     }
     .print();
     Ok(())
