@@ -81,7 +81,11 @@ Plans:
   3. Concurrent `add-member` calls against the same group produce a correct final member list (no silently dropped members due to ETag race)
   4. User can run `contacts create --group <group-id> ...` and the new contact is created and added to the group in one command; partial failure (contact created but group update fails) is reported clearly
   5. AI agent can call `addContactGroupMember` and `removeContactGroupMember` mutations and receive the updated ContactGroup with resolved members
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 19-01-PLAN.md — CardDAV transport: add_group_member and remove_group_member with ETag retry
+- [ ] 19-02-PLAN.md — CLI surface: add-member, remove-member commands and --group flag on create
+- [ ] 19-03-PLAN.md — MCP/GraphQL surface: addGroupMember and removeGroupMember mutations
 
 ## Progress
 
@@ -105,4 +109,4 @@ Plans:
 | 16. Integration Test Coverage | v1.2 | 4/4 | Complete | 2026-04-05 |
 | 17. Quality Polish | v1.2 | 3/3 | Complete | 2026-04-05 |
 | 18. Group Data Model, CRUD, and Base Surfaces | v1.3 | 3/3 | Complete    | 2026-04-14 |
-| 19. Group Membership Management | v1.3 | 0/? | Not started | - |
+| 19. Group Membership Management | v1.3 | 0/3 | Not started | - |
